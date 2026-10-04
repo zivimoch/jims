@@ -54,7 +54,7 @@ class JimsController extends Controller
 
     public function activities(Request $r)
     {
-        $r->validate(['from' => 'nullable|date_format:Y-m-d', 'to' => 'nullable|date_format:Y-m-d', 'search' => 'nullable|string|max:200', 'class' => 'nullable|string|max:60']);
+        $r->validate(['from' => 'nullable|date_format:Y-m-d', 'to' => 'nullable|date_format:Y-m-d', 'search' => 'nullable|string|max:200', 'class' => 'nullable|string|max:60', 'per_page' => 'nullable|integer|min:1|max:100', 'sort' => ['nullable', Rule::in(['asc', 'desc'])]]);
         $query = Scope::visible(Activity::query(), $r->user());
         if ($r->boolean('active')) {
             $query->where('starts_at', '<=', now()->addHours(2))->where('ends_at', '>=', now()->subHours(2));
@@ -77,7 +77,7 @@ class JimsController extends Controller
             $query->where('group_id', (int) $r->input('group'));
         }
 
-        return $query->with(['group', 'village'])->withCount('attendances')->orderByDesc('starts_at')->paginate(100);
+        return $query->with(['group', 'village'])->withCount('attendances')->orderBy('starts_at', $r->input('sort', 'desc'))->orderBy('id')->paginate($r->integer('per_page', 100));
     }
 
     private function scopeData(Request $r): array

@@ -25,7 +25,6 @@ const state = {
     page: "attendance",
     groups: [],
     villages: [],
-    selectedAgenda: new Map(),
     agendaPage: 1,
 };
 const classes = [
@@ -221,7 +220,7 @@ function nav() {
     if (state.user.role === "super_admin")
         items.push(["audit", "history", "Log Aktivitas"]);
     const html = ([page, symbol, title]) =>
-        `<button class="nav-item ${page === state.page ? "active" : ""}" data-page="${page}">${icon(symbol)}<span>${title}</span></button>`;
+        `<button class="nav-item ${["schedule", "attendance", "donations"].includes(page) ? "primary-nav-item" : ""} ${page === state.page ? "active" : ""}" data-page="${page}">${icon(symbol)}<span>${title}</span></button>`;
     $("#sidebar nav").innerHTML = items.map(html).join("");
     $(".mobile-bottom-nav").innerHTML = items.slice(0, 3).map(html).join("");
     $$("[data-page]").forEach(
@@ -641,6 +640,7 @@ function bindScope() {
     };
 }
 function editActivity(activity) {
+    if (activity && !manages(activity)) return;
     const a = activity || {},
         date = a.starts_at ? dateInput(a.starts_at) : dateInput();
     const time = (d) =>
@@ -707,6 +707,24 @@ function editActivity(activity) {
         },
     );
     bindScope();
+    if (a.id) {
+        $("#dialog-fields").insertAdjacentHTML(
+            "beforeend",
+            '<button type="button" id="agenda-delete" class="secondary-button danger-button">Hapus kegiatan</button>',
+        );
+        $("#agenda-delete").onclick = () => {
+            $("#dialog").close();
+            confirmAction(
+                "Hapus kegiatan?",
+                `Kegiatan "${a.title}" dan absensi terkait akan dihapus.`,
+                async () => {
+                    await api("/activities/" + a.id, "DELETE");
+                    await reloadActivities();
+                    toast("Kegiatan dihapus.");
+                },
+            );
+        };
+    }
 }
 let agendaFilterTimer;
 let agendaFilters = {
@@ -715,119 +733,148 @@ let agendaFilters = {
     class: "all",
     from: "",
     to: "",
+    per_page: 25,
+    sort: "asc",
 };
 function filteredAgenda() {
-    return state.activities.filter(
-        (a) =>
-            (agendaFilters.group === "all" ||
-                String(a.group_id ?? "desa") === agendaFilters.group) &&
-            (agendaFilters.class === "all" ||
-                a.class_name === agendaFilters.class) &&
-            (!agendaFilters.from ||
-                dateInput(a.starts_at) >= agendaFilters.from) &&
-            (!agendaFilters.to || dateInput(a.starts_at) <= agendaFilters.to) &&
-            `${a.title} ${a.location}`
-                .toLowerCase()
-                .includes(agendaFilters.search.toLowerCase()),
-    );
+    return state.activities;
 }
 function renderAgenda() {
-    $("#schedule-page").innerHTML =
-        `<div class="feature-toolbar"><h2>Agenda kegiatan</h2><div class="action-row"><button id="agenda-share" class="secondary-button">Bagikan</button><button id="agenda-read" class="secondary-button">Mode baca</button>${state.user.role !== "jamaah" ? '<button id="agenda-create" class="primary-button">＋ Tambah kegiatan</button>' : ""}</div></div><div class="filter-grid">${input("Cari kegiatan / lokasi", "search", agendaFilters.search, "search", false)}${select("Lingkup", "group", [["all", "Semua lingkup"], ["desa", "Desa"], ...state.groups.map((g) => [g.id, g.name])], agendaFilters.group)}${select("Kelas", "class", [["all", "Semua kelas"], ...[...new Set([...classes, ...state.activities.map((a) => a.class_name)])].map((c) => [c, c])], agendaFilters.class)}${input("Dari tanggal", "from", agendaFilters.from, "date", false)}${input("Sampai tanggal", "to", agendaFilters.to, "date", false)}</div><p id="agenda-selected" class="muted"></p><div class="schedule-scroll"><table class="schedule-table"><thead><tr><th>Pilih</th><th>Kegiatan</th><th>Lingkup / Kelas</th><th>Tanggal & Jam</th><th>Materi</th><th>Status</th><th>Aksi</th></tr></thead><tbody id="agenda-rows"></tbody></table></div><div id="agenda-pager" class="pager"></div>`;
+    const page = $("#schedule-page");
+    page.classList.remove("panel");
+    page.innerHTML = `<div class="dt-toolbar"><label>Tampilkan <select id="ami-size">${[10, 25, 50, 100].map((n) => `<option value="${n}" ${Number(agendaFilters.per_page) === n ? "selected" : ""}>${n}</option>`).join("")}</select> baris</label><button id="ami-copy-table">Copy</button><button id="ami-print">PDF / Cetak</button>${state.user.role !== "jamaah" ? '<button id="agenda-create" class="dt-add">＋ Tambah</button>' : ""}<label class="dt-search">Cari: <input id="ami-search" type="search" value="${esc(agendaFilters.search)}" placeholder="Cari kegiatan..." aria-label="Cari agenda"></label></div><details class="agenda-filter-details"><summary>Filter lingkup dan tanggal</summary><div class="filter-grid">${select("Lingkup", "group", [["all", "Semua lingkup"], ["desa", "Desa"], ...state.groups.map((g) => [g.id, g.name])], agendaFilters.group)}${select("Kelas", "class", [["all", "Semua kelas"], ...classes.map((c) => [c, c])], agendaFilters.class)}${input("Dari tanggal", "from", agendaFilters.from, "date", false)}${input("Sampai tanggal", "to", agendaFilters.to, "date", false)}</div></details><div id="ami-results"></div><div class="dt-footer"><span id="ami-info" role="status"></span><div id="agenda-pager"></div></div><div class="dt-selection"><span>${state.user.role === "jamaah" ? "Agenda kegiatan sesuai lingkup Anda." : "Klik / tap dua kali pada baris untuk edit atau hapus."}</span><button id="agenda-share">Bagikan WA</button><button id="agenda-read">Mode baca</button></div>`;
+    const refresh = () => {
+        state.agendaPage = 1;
+        clearTimeout(agendaFilterTimer);
+        agendaFilterTimer = setTimeout(run(reloadActivities), 250);
+    };
+    $("#ami-search").oninput = (e) => {
+        agendaFilters.search = e.target.value;
+        refresh();
+    };
+    $("#ami-size").onchange = (e) => {
+        agendaFilters.per_page = Number(e.target.value);
+        refresh();
+    };
     $$(
         "#schedule-page .filter-grid input, #schedule-page .filter-grid select",
     ).forEach(
-        (i) =>
-            (i.oninput = () => {
-                agendaFilters[i.name] = i.value;
-                state.agendaPage = 1;
-                clearTimeout(agendaFilterTimer);
-                agendaFilterTimer = setTimeout(
-                    run(() => reloadActivities()),
-                    250,
-                );
+        (el) =>
+            (el.oninput = () => {
+                agendaFilters[el.name] = el.value;
+                refresh();
             }),
     );
     if ($("#agenda-create")) $("#agenda-create").onclick = () => editActivity();
+    $("#ami-copy-table").onclick = run(async () => {
+        await navigator.clipboard.writeText(agendaText(filteredAgenda()));
+        toast("Agenda halaman ini disalin.");
+    });
+    $("#ami-print").onclick = () => window.print();
     $("#agenda-share").onclick = () => shareAgenda(false);
     $("#agenda-read").onclick = () => shareAgenda(true);
     renderAgendaRows();
 }
 function renderAgendaRows() {
-    $("#agenda-rows").innerHTML =
-        filteredAgenda()
-            .map(
-                (a) =>
-                    `<tr><td><input type="checkbox" aria-label="Pilih ${esc(a.title)}" data-agenda-select="${a.id}" ${state.selectedAgenda.has(a.id) ? "checked" : ""}></td><td><strong>${esc(a.title)}</strong><p>${esc(a.location)}</p>${a.note ? `<small>${esc(a.note)}</small>` : ""}</td><td>${esc(a.group?.name || "Desa")}<br><span class="badge class-badge">${esc(a.class_name)}</span></td><td class="schedule-date">${esc(fmt(a.starts_at))}<br>s.d. ${esc(clock(a.ends_at))} WIB</td><td>${esc(materialText(a))}</td><td>${activityStatus(a)}</td><td>${manages(a) ? `<button class="text-button" data-edit="${a.id}">Edit</button><button class="text-button danger" data-delete="${a.id}">Hapus</button>` : "Lihat saja"}</td></tr>`,
-            )
-            .join("") ||
-        '<tr><td colspan="7" class="empty-state">Tidak ada kegiatan yang cocok.</td></tr>';
-    const selection = () => {
-        $("#agenda-selected").textContent = state.selectedAgenda.size
-            ? `${state.selectedAgenda.size} kegiatan dipilih`
-            : "Pilih kegiatan untuk membagikan agenda tertentu.";
-    };
-    selection();
-    $$("[data-agenda-select]").forEach(
-        (i) =>
-            (i.onchange = () => {
-                i.checked
-                    ? state.selectedAgenda.set(
-                          Number(i.dataset.agendaSelect),
-                          state.activities.find(
-                              (a) => a.id === Number(i.dataset.agendaSelect),
-                          ),
-                      )
-                    : state.selectedAgenda.delete(
-                          Number(i.dataset.agendaSelect),
-                      );
-                selection();
-            }),
-    );
-    $$("[data-edit]").forEach(
-        (b) =>
-            (b.onclick = () =>
-                editActivity(
-                    state.activities.find(
-                        (a) => a.id === Number(b.dataset.edit),
-                    ),
-                )),
-    );
-    $$("[data-delete]").forEach(
-        (b) =>
-            (b.onclick = () =>
-                confirmAction(
-                    "Hapus kegiatan?",
-                    "Kegiatan dan absensi terkait akan dihapus.",
-                    async () => {
-                        await api("/activities/" + b.dataset.delete, "DELETE");
-                        state.selectedAgenda.delete(Number(b.dataset.delete));
-                        await reloadActivities();
-                    },
-                )),
-    );
-    pager($("#agenda-pager"), state.activityPagination, async (page) => {
-        state.agendaPage = page;
-        state.selectedAgenda.clear();
+    if (!$("#ami-results")) return;
+    const activities = filteredAgenda();
+    let previousDate = "";
+    const rows = activities
+        .map((a) => {
+            const date = dateInput(a.starts_at);
+            const longDate = new Intl.DateTimeFormat("id-ID", {
+                timeZone: "Asia/Jakarta",
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+            }).format(new Date(a.starts_at));
+            const dateCell =
+                previousDate !== date
+                    ? `<td class="dt-date" rowspan="${activities.filter((item) => dateInput(item.starts_at) === date).length}">${esc(longDate)}</td>`
+                    : "";
+            previousDate = date;
+            const editable = manages(a),
+                status = activityStatus(a);
+            return `<tr ${editable ? `data-edit-event="${a.id}" tabindex="0" aria-label="Edit ${esc(a.title)}"` : ""}>${dateCell}<td class="dt-time">${esc(clock(a.starts_at))}<br>– ${esc(clock(a.ends_at))}</td><td class="dt-duration">${Math.round((new Date(a.ends_at) - new Date(a.starts_at)) / 60000)}</td><td><strong>${esc(a.title)}</strong><div class="dt-tags"><span>${esc(a.group?.name || "Desa")}</span><span>${esc(a.class_name)}</span></div></td><td><b>Lokasi:</b><p>${esc(a.location)}</p><b>Materi:</b><p>${esc(materialText(a))}</p>${a.note ? `<b>Keterangan:</b><p>${esc(a.note)}</p>` : ""}</td><td><span class="dt-status ${status === "Sedang berlangsung" ? "live" : ""}">${status}</span></td></tr>`;
+        })
+        .join("");
+    $("#ami-results").innerHTML =
+        `<div class="dt-scroll" tabindex="0" role="region" aria-label="Tabel agenda AMI"><table class="ami-datatable"><thead><tr><th aria-sort="${agendaFilters.sort === "asc" ? "ascending" : "descending"}"><button id="ami-sort-date">Tanggal ${agendaFilters.sort === "asc" ? "↑" : "↓"}</button></th><th>Jam</th><th>Durasi<br>(menit)</th><th>Agenda</th><th>Rincian</th><th>Status</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="empty">Tidak ada kegiatan yang cocok.</td></tr>'}</tbody></table></div>`;
+    $("#ami-sort-date").onclick = run(async () => {
+        agendaFilters.sort = agendaFilters.sort === "asc" ? "desc" : "asc";
+        state.agendaPage = 1;
         await reloadActivities();
     });
+    const meta = state.activityPagination;
+    $("#ami-info").textContent =
+        `Menampilkan ${meta?.from || 0}–${meta?.to || 0} dari ${meta?.total || 0} kegiatan · WIB`;
+    $("#agenda-share").disabled = $("#agenda-read").disabled =
+        !activities.length;
+    pager($("#agenda-pager"), meta, async (page) => {
+        state.agendaPage = page;
+        await reloadActivities();
+    });
+    const openRow = (row) => {
+        const a = activities.find(
+            (a) => a.id === Number(row?.dataset.editEvent),
+        );
+        if (a && manages(a) && !$("#dialog").open) editActivity(a);
+    };
+    const results = $("#ami-results");
+    results.ondblclick = (e) => openRow(e.target.closest("[data-edit-event]"));
+    results.onkeydown = (e) => {
+        if (e.key === "Enter" && e.target.matches("[data-edit-event]")) {
+            e.preventDefault();
+            openRow(e.target);
+        }
+    };
+    let touchStart, lastTap;
+    results.onpointerdown = (e) => {
+        if (e.pointerType === "touch")
+            touchStart = { x: e.clientX, y: e.clientY };
+    };
+    results.onpointerup = (e) => {
+        if (e.pointerType !== "touch" || !touchStart) return;
+        const row = e.target.closest("[data-edit-event]"),
+            moved = Math.hypot(
+                e.clientX - touchStart.x,
+                e.clientY - touchStart.y,
+            );
+        touchStart = null;
+        if (!row || moved > 12) {
+            lastTap = null;
+            return;
+        }
+        const now = Date.now();
+        if (
+            lastTap &&
+            lastTap.id === row.dataset.editEvent &&
+            now - lastTap.time < 350
+        ) {
+            lastTap = null;
+            e.preventDefault();
+            openRow(row);
+        } else lastTap = { id: row.dataset.editEvent, time: now };
+    };
 }
-function shareAgenda(reader) {
-    const activities = state.selectedAgenda.size
-        ? [...state.selectedAgenda.values()]
-        : filteredAgenda();
-    if (!activities.length) {
-        toast("Pilih kegiatan terlebih dahulu.");
-        return;
-    }
-    const text = activities
+function agendaText(activities) {
+    return activities
         .map(
             (a) =>
                 `${a.title}\n${fmt(a.starts_at)} – ${clock(a.ends_at)} WIB\n${a.group?.name || "Desa"} · ${a.class_name}\nLokasi: ${a.location}\nMateri: ${materialText(a)}${a.note ? "\n" + a.note : ""}`,
         )
         .join("\n\n────────────\n\n");
+}
+function shareAgenda(reader) {
+    const activities = filteredAgenda();
+    if (!activities.length) {
+        toast("Tidak ada kegiatan untuk dibagikan.");
+        return;
+    }
+    const text = agendaText(activities);
     dialog(
-        reader ? "Mode baca" : "Bagikan agenda",
+        reader ? "Mode baca" : "Bagikan agenda halaman ini",
         reader
             ? `<article class="reader-text">${esc(text)}</article>`
             : `<textarea id="share-text" rows="14">${esc(text)}</textarea><div class="action-row"><button type="button" id="copy-agenda" class="secondary-button">Salin teks</button><a class="primary-button" id="wa-agenda" target="_blank" rel="noopener noreferrer">Buka WhatsApp</a></div>`,

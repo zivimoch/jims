@@ -50,7 +50,7 @@ Pemeriksaan dilakukan pada **server**, termasuk kanal WebSocket privat; menyembu
 
 ## Fitur
 
-- AMI: kegiatan, kelas, lokasi, materi multi-pilih, tanggal/jam WIB, catatan, link HTTPS Zoom, filter, berbagi teks ke WhatsApp, dan mode baca.
+- AMI: tabel ringkas sesuai prototype, tanpa checkbox. Klik/tap dua kali atau Enter pada baris untuk edit/hapus bagi pengurus yang berwenang. Mendukung jumlah baris, urutan tanggal, pencarian, filter, Copy, PDF/Cetak, berbagi halaman ke WhatsApp, dan mode baca. Kegiatan memuat kelas, lokasi, materi multi-pilih, jam WIB, catatan, dan link HTTPS Zoom.
 - Absen: pilih kegiatan/lokasi secara eksplisit, hadir offline, online atau izin beserta alasan, batalkan absensi selama jendela waktu berlangsung. Tombol sidik jari adalah kontrol tap/geser, bukan pembaca biometrik.
 - Absensi dibuka dua jam sebelum mulai hingga dua jam sesudah selesai. Kunci unik database mencegah duplikasi; identitas pencatat terpisah dari identitas jamaah.
 - Riwayat dan ketercapaian materi dari absensi offline/online. Catatan shodakoh kategori Kas dan Tabungan Jalan-jalan; tidak memverifikasi transfer. Rekening/QRIS contoh diberi label dummy.
