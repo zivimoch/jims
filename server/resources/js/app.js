@@ -279,6 +279,16 @@ async function start() {
         document.body.classList.remove("booting");
     }
 }
+document.addEventListener("input", (event) => {
+    if (event.target.matches('input[name="phone"]')) {
+        const field = event.target;
+        const caret = field.selectionStart;
+        const before = field.value.slice(0, caret).replace(/[\s-]/g, "");
+        field.value = field.value.replace(/[\s-]/g, "");
+        field.setSelectionRange(before.length, before.length);
+        field.setCustomValidity(field.value && !/^08[0-9]{8,11}$/.test(field.value) ? "Gunakan nomor WA berawalan 08, sepanjang 10–13 digit (bukan 62)." : "");
+    }
+});
 $("#login-form").onsubmit = async (e) => {
     e.preventDefault();
     const button = $("#login-form button");
@@ -1073,7 +1083,7 @@ async function renderUsers(page = 1, search = "") {
         "/users?page=" + page + "&search=" + encodeURIComponent(search),
     );
     $("#users-page").innerHTML =
-        `<div class="feature-toolbar"><h2>Akun ${esc(state.user.group?.name || state.user.village?.name || "JiMS")}</h2><button id="add-user" class="primary-button">＋ Tambah akun</button></div><p class="muted">${state.user.role === "super_admin" ? "Kelola semua peran dan lingkup akun." : "Akun yang dapat Anda kelola sesuai lingkup kepengurusan."}</p><form id="user-search-form" class="action-row"><input aria-label="Cari akun" id="user-search" placeholder="Cari nama…" value="${esc(search)}"><button class="secondary-button">Cari</button></form><div>${result.data.map((u) => `<article class="account-row"><div><h3>${esc(u.name)} ${u.active ? "" : '<span class="badge inactive">Nonaktif</span>'}</h3><p>${esc(u.email)}</p><p>${roles[u.role]} · ${esc(u.group?.name || u.village?.name || "Semua wilayah")}</p></div><button class="text-button" data-user="${u.id}">Kelola</button></article>`).join("") || '<p class="empty-state">Tidak ada akun yang cocok.</p>'}</div><div id="user-pager" class="pager"></div>`;
+        `<div class="feature-toolbar"><h2>Akun ${esc(state.user.group?.name || state.user.village?.name || "JiMS")}</h2><button id="add-user" class="primary-button">＋ Tambah akun</button></div><p class="muted">${state.user.role === "super_admin" ? "Kelola semua peran dan lingkup akun." : "Akun yang dapat Anda kelola sesuai lingkup kepengurusan."}</p><form id="user-search-form" class="action-row"><input aria-label="Cari akun" id="user-search" placeholder="Cari nama…" value="${esc(search)}"><button class="secondary-button">Cari</button></form><div>${result.data.map((u) => `<article class="account-row"><div><h3>${esc(u.name)} ${u.active ? "" : '<span class="badge inactive">Nonaktif</span>'}</h3><p>${esc(u.phone || "Nomor WA belum diisi")}</p><p>${roles[u.role]} · ${esc(u.group?.name || u.village?.name || "Semua wilayah")}</p></div><button class="text-button" data-user="${u.id}">Kelola</button></article>`).join("") || '<p class="empty-state">Tidak ada akun yang cocok.</p>'}</div><div id="user-pager" class="pager"></div>`;
     $("#add-user").onclick = () => editUser();
     $$("[data-user]").forEach(
         (b) =>
@@ -1101,7 +1111,7 @@ function editUser(u = {}) {
     dialog(
         u.id ? "Kelola akun" : "Tambah akun",
         input("Nama lengkap", "name", u.name) +
-            input("Email", "email", u.email, "email") +
+            input("Nomor WhatsApp (08…)", "phone", u.phone, "tel") +
             select("Peran", "role", allowed, u.role || "jamaah") +
             scopeFields(u) +
             select(
@@ -1112,15 +1122,6 @@ function editUser(u = {}) {
                     [0, "Nonaktif"],
                 ],
                 u.active === false ? 0 : 1,
-            ) +
-            input(
-                u.id
-                    ? "Kata sandi baru (kosongkan jika tidak diganti)"
-                    : "Kata sandi minimal 12 karakter",
-                "password",
-                "",
-                "password",
-                !u.id,
             ) +
             '<p class="muted">Perubahan akun akan mengakhiri sesi masuk akun tersebut. Akun dinonaktifkan tanpa menghapus riwayat absensinya.</p>',
         async (d) => {
@@ -1148,34 +1149,8 @@ function editUser(u = {}) {
 $("#profile").onclick = () =>
     dialog(
         "Profil saya",
-        input("Nama lengkap", "name", state.user.name) +
-            input(
-                "Kata sandi saat ini (untuk mengganti sandi)",
-                "current_password",
-                "",
-                "password",
-                false,
-            ) +
-            input(
-                "Kata sandi baru minimal 12 karakter",
-                "password",
-                "",
-                "password",
-                false,
-            ) +
-            input(
-                "Ulangi kata sandi baru",
-                "password_confirmation",
-                "",
-                "password",
-                false,
-            ),
+        input("Nama lengkap", "name", state.user.name) + `<p class="muted">Nomor WhatsApp: ${esc(state.user.phone || "Belum diisi")}. Hubungi pengurus untuk mengubah nomor.</p>`,
         async (d) => {
-            if (!d.password) {
-                delete d.password;
-                delete d.current_password;
-                delete d.password_confirmation;
-            }
             state.user = await api("/profile", "PATCH", d);
             $("#profile-name").textContent = state.user.name.split(" ")[0];
             toast("Profil disimpan.");

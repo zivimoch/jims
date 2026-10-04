@@ -19,17 +19,28 @@ use App\Services\Scope;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\Rules\Password;
 
 class JimsController extends Controller
 {
+    private function normalizePhone(Request $r): void
+    {
+        if (is_string($r->input('phone'))) {
+            $r->merge(['phone' => preg_replace('/[\s\p{Z}\-]+/u', '', $r->input('phone'))]);
+        }
+    }
+
     public function login(Request $r)
     {
-        $data = $r->validate(['email' => 'required|email', 'password' => 'required|string']);
-        if (! Auth::attempt([...$data, 'active' => true])) {
-            return response()->json(['message' => 'Email atau kata sandi tidak sesuai.'], 422);
+        $this->normalizePhone($r);
+        $data = $r->validate(['phone' => ['required', 'string', 'regex:/^08[0-9]{8,11}$/']]);
+        $user = User::where('phone', $data['phone'])->where('active', true)->first();
+        if (! $user) {
+            return response()->json(['message' => 'Nomor WhatsApp belum terdaftar atau akun tidak aktif.'], 422);
         }
+        Auth::guard('web')->setRememberDuration(5256000);
+        Auth::login($user, true);
         $r->session()->regenerate();
 
         return ['user' => $r->user()];
@@ -231,7 +242,11 @@ class JimsController extends Controller
         if ($user?->exists) {
             abort_unless($this->canManageUser($actor, $user), 403);
         }
-        $d = $r->validate(['name' => 'required|string|max:100', 'email' => ['required', 'email', 'max:200', Rule::unique('users')->ignore($user?->id)], 'password' => [$user ? 'nullable' : 'required', 'string', Password::min(12)], 'role' => ['required', Rule::in(['super_admin', 'pengurus', 'jamaah'])], 'active' => 'required|boolean', 'village_id' => 'nullable|integer|exists:villages,id', 'group_id' => ['nullable', 'integer', Rule::exists('groups', 'id')->where('village_id', $r->input('village_id'))]]);
+        $this->normalizePhone($r);
+        $d = $r->validate(['name' => 'required|string|max:100', 'phone' => ['required', 'string', 'regex:/^08[0-9]{8,11}$/', Rule::unique('users')->ignore($user?->id)], 'role' => ['required', Rule::in(['super_admin', 'pengurus', 'jamaah'])], 'active' => 'required|boolean', 'village_id' => 'nullable|integer|exists:villages,id', 'group_id' => ['nullable', 'integer', Rule::exists('groups', 'id')->where('village_id', $r->input('village_id'))]]);
+        if (! $user) {
+            $d['password'] = Str::random(64);
+        }
         if ($d['role'] !== 'super_admin') {
             abort_unless(! empty($d['village_id']), 422, 'Pilih desa.');
             if ($d['role'] === 'jamaah') {
@@ -254,7 +269,9 @@ class JimsController extends Controller
                 abort_unless($admins->count() > 1, 422, 'Super admin aktif terakhir tidak dapat dinonaktifkan.');
             }
             $record = $user ?? new User;
-            $record->fill($d)->save();
+            $record->fill($d);
+            $record->setRememberToken(Str::random(60));
+            $record->save();
             $this->audit($r, 'user.saved', $record);
             DB::table('sessions')->where('user_id', $record->id)->delete();
             PushSubscription::where('user_id', $record->id)->delete();
@@ -270,8 +287,8 @@ class JimsController extends Controller
 
     public function profile(Request $r)
     {
-        $d = $r->validate(['name' => 'required|string|max:100', 'current_password' => 'required_with:password|current_password', 'password' => ['nullable', 'confirmed', Password::min(12)]]);
-        $r->user()->update(array_filter(['name' => $d['name'], 'password' => $d['password'] ?? null]));
+        $d = $r->validate(['name' => 'required|string|max:100']);
+        $r->user()->update($d);
 
         return $r->user();
     }

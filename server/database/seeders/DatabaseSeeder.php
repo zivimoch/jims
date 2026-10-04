@@ -26,8 +26,9 @@ class DatabaseSeeder extends Seeder
         }
         $hash = Hash::make($password);
         $v = Village::firstOrCreate(['name' => 'Jati Perhubungan']);
-        $make = function ($email, $name, $role, $group = null) use ($v, $hash) {
-            return User::firstOrCreate(['email' => $email], ['name' => $name, 'password' => $hash, 'role' => $role, 'village_id' => $role === 'super_admin' ? null : $v->id, 'group_id' => $group, 'active' => true]);
+        $counter = 0;
+        $make = function ($email, $name, $role, $group = null) use ($v, $hash, &$counter) {
+            return User::firstOrCreate(['email' => $email], ['phone' => '0800'.str_pad((string) ++$counter, 8, '0', STR_PAD_LEFT), 'name' => $name, 'password' => $hash, 'role' => $role, 'village_id' => $role === 'super_admin' ? null : $v->id, 'group_id' => $group, 'active' => true]);
         };
         $admin = $make('admin@jims.test', 'Super Admin', 'super_admin');
         $make('desa@jims.test', 'Pengurus Desa', 'pengurus');

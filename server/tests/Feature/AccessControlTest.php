@@ -69,7 +69,7 @@ class AccessControlTest extends TestCase
 
     private function userData(User $u): array
     {
-        return ['name' => $u->name, 'email' => $u->email, 'role' => $u->role, 'village_id' => $u->village_id, 'group_id' => $u->group_id, 'active' => true];
+        return ['name' => $u->name, 'phone' => $u->phone, 'role' => $u->role, 'village_id' => $u->village_id, 'group_id' => $u->group_id, 'active' => true];
     }
 
     public function test_guests_cannot_read_private_api(): void

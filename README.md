@@ -15,14 +15,18 @@ Buka **http://127.0.0.1:8080**. Gunakan alamat yang sama secara konsisten; `loca
 
 `setup.sh` membuat `.env` lokal dengan APP_KEY, password database, dan rahasia Reverb acak, membangun image, menjalankan migrasi, dan menyiapkan kunci Web Push di volume privat. Kunci tidak dicetak atau dimasukkan ke Git. Data dummy dibuat hanya ketika perintah `db:seed` dijalankan, dan seeder menolak lingkungan production.
 
-| Peran dummy | Email |
+| Peran dummy | Nomor WhatsApp sintetis |
 | --- | --- |
-| Super admin | `admin@jims.test` |
-| Pengurus desa | `desa@jims.test` |
-| Pengurus kelompok 1–3 | `kelompok1@jims.test`, `kelompok2@jims.test`, `kelompok3@jims.test` |
-| Jamaah kelompok 1–3 | `jamaah1@jims.test`, `jamaah2@jims.test`, `jamaah3@jims.test` |
+| Super admin | `080000000001` |
+| Pengurus desa | `080000000002` |
+| Pengurus kelompok 1–3 | `080000000003`, `080000000014`, `080000000025` |
+| Jamaah kelompok 1–3 | `080000000004`, `080000000015`, `080000000026` |
 
-Password contoh lokal: **`JiMS-demo-2026!`** (nilai awal `DEMO_PASSWORD` pada `.env`). Ada total 35 akun, satu desa, tiga kelompok, kegiatan, absensi, rekening dummy, catatan shodakoh, dan notifikasi. Jangan gunakan kredensial demo untuk situs publik. Mengganti `DEMO_PASSWORD` tidak mengganti password akun yang sudah dibuat.
+Login sementara hanya menggunakan nomor WA terdaftar, tanpa email, password, atau OTP. Karena belum memverifikasi kepemilikan nomor, siapa pun yang mengetahui nomor tersebut dapat masuk; termasuk akun pengurus/admin. Nomor harus berawalan `08` sepanjang 10–13 digit; spasi dan strip dibersihkan otomatis di formulir dan server, awalan `62` ditolak. Pengurus mengisi nomor unik saat membuat/mengelola akun; email tidak diperlukan.
+
+Login otomatis diingat menggunakan cookie remember-me terenkripsi, HttpOnly, dengan durasi yang diminta 10 tahun. Cookie diperbarui saat memulihkan sesi yang kedaluwarsa. Sesi server boleh kedaluwarsa tanpa meminta login ulang selama cookie masih berlaku. Browser dapat membatasi usia cookie; menghapus data browser, memilih Keluar, atau perubahan/nonaktif akun oleh pengurus mengakhiri akses tersimpan. Ini tidak menjanjikan login abadi di luar kontrol browser. Nomor WA bukan data localStorage. Gunakan HTTPS saat deployment.
+
+Tersedia 35 akun dummy dan data contoh. Migrasi mengisi nomor sintetis hanya pada akun demo `@jims.test`; akun lain perlu diberi nomor oleh pengurus. Password internal acak untuk akun baru tidak digunakan pada alur login ini. `DEMO_PASSWORD` tetap dipakai oleh seeder lama untuk kolom internal, bukan untuk masuk.
 
 Tanggal kegiatan dummy mengikuti tanggal saat seed pertama kali dijalankan. Untuk mencoba absensi pada hari berikutnya, jalankan:
 
@@ -111,7 +115,7 @@ Referensi implementasi: [Laravel Reverb](https://laravel.com/docs/13.x/reverb), 
 
 ## Status verifikasi lokal
 
-- Tes backend dijalankan dengan PostgreSQL terpisah (21 tes setelah menghapus tes bawaan yang hanya memeriksa `true`).
+- Tes backend dijalankan dengan PostgreSQL terpisah (25 tes, 68 assertions, termasuk login WA dan pemulihan sesi melalui cookie).
 - Login jamaah, absensi tersimpan, kontrol AMI baca-saja untuk jamaah, dan layout 390 piksel diperiksa melalui browser.
 - Agenda baru dari sesi admin terpisah muncul pada sesi jamaah lewat WebSocket tanpa reload manual; notifikasi dalam aplikasi juga tersimpan.
 - Request login tanpa CSRF token ditolak HTTP 419.
