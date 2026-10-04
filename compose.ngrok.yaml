@@ -1,0 +1,9 @@
+services:
+  ngrok:
+    image: ngrok/ngrok:latest
+    command: ["http", "http://jims:80", "--log", "stdout"]
+    env_file:
+      - .env.ngrok
+    depends_on:
+      - jims
+    restart: unless-stopped

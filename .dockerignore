@@ -1,0 +1,17 @@
+.git
+.env
+.env.*
+**/node_modules
+**/vendor
+server/storage/logs/*
+server/storage/framework/sessions/*
+server/storage/framework/views/*
+server/bootstrap/cache/*.php
+server/public/build
+prototype
+test-results
+*.zip
+**/.env
+**/.env.*
+**/storage/app/vapid.json
+**/.phpunit.cache

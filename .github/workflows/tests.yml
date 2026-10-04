@@ -1,0 +1,49 @@
+name: JiMS checks
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: jims_testing
+          POSTGRES_USER: jims
+          POSTGRES_PASSWORD: ci-testing-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U jims"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      APP_ENV: testing
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_DATABASE: jims_testing
+      DB_USERNAME: jims
+      DB_PASSWORD: ci-testing-only
+      SESSION_DRIVER: array
+      CACHE_STORE: array
+      QUEUE_CONNECTION: sync
+      REVERB_APP_ID: jims-ci
+      REVERB_APP_KEY: ci-key
+      REVERB_APP_SECRET: ci-secret
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_pgsql, intl, mbstring, bcmath
+          coverage: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: cp .env.example .env
+      - run: composer install --prefer-dist --no-interaction
+      - run: php artisan key:generate
+      - run: npm ci && npm run build
+      - run: php artisan test

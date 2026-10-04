@@ -1,0 +1,48 @@
+name: jims
+x-app: &app
+  build:
+    context: .
+    target: app
+  env_file: .env
+  restart: unless-stopped
+  volumes:
+    - app-storage:/var/www/html/storage
+  depends_on:
+    db:
+      condition: service_healthy
+services:
+  jims:
+    build:
+      context: .
+      target: web
+    ports:
+      - "127.0.0.1:${HTTP_PORT:-8080}:80"
+    depends_on:
+      - app
+      - reverb
+    restart: unless-stopped
+  app:
+    <<: *app
+  queue:
+    <<: *app
+    command: php artisan queue:work --sleep=1 --tries=3 --timeout=60
+  reverb:
+    <<: *app
+    command: php artisan reverb:start --host=0.0.0.0 --port=8081
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-jims}
+      POSTGRES_USER: ${DB_USERNAME:-jims}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Run scripts/setup.sh first}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+volumes:
+  postgres-data:
+  app-storage:
