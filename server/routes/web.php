@@ -1,12 +1,24 @@
 <?php
 
 use App\Http\Controllers\JimsController as J;
+use App\Http\Controllers\MasterController;
 use App\Http\Middleware\ActiveAccount;
+use App\Models\BrandSetting;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', fn () => response()->view('app')->header('Cache-Control', 'no-store, private'))->name('login');
+Route::get('/', fn () => response()->view('app', ['brand' => BrandSetting::first()])->header('Cache-Control', 'no-store, private'))->name('login');
+Route::get('/manifest.webmanifest', function () {
+    $brand = BrandSetting::first();
+
+    return response()->json(['id' => '/', 'name' => $brand?->name ?? 'JiMS', 'short_name' => $brand?->name ?? 'JiMS', 'description' => $brand?->subtitle ?? 'Agenda dan absensi jamaah', 'lang' => 'id', 'start_url' => '/', 'scope' => '/', 'display' => 'standalone', 'background_color' => '#f3f8f7', 'theme_color' => '#00aa80', 'icons' => [['src' => '/icons/icon-192.png', 'sizes' => '192x192', 'type' => 'image/png', 'purpose' => 'any maskable'], ['src' => '/icons/icon-512.png', 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'any maskable']]])->header('Content-Type', 'application/manifest+json')->header('Cache-Control', 'no-cache');
+});
 Route::post('/api/login', [J::class, 'login'])->middleware('throttle:5,1');
 Route::middleware(['auth', ActiveAccount::class, 'throttle:180,1'])->prefix('api')->group(function () {
+    Route::get('/masters/{kind}', [MasterController::class, 'index']);
+    Route::post('/masters/{kind}', [MasterController::class, 'save']);
+    Route::put('/masters/{kind}/{id}', [MasterController::class, 'save']);
+    Route::delete('/masters/{kind}/{id}', [MasterController::class, 'destroy']);
+    Route::put('/brand', [MasterController::class, 'brand']);
     Route::post('/logout', [J::class, 'logout']);
     Route::get('/bootstrap', [J::class, 'bootstrap']);
     Route::patch('/profile', [J::class, 'profile']);

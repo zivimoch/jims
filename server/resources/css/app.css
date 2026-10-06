@@ -201,3 +201,55 @@
 .sr-only{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}.person-name small{line-height:1.5}.feature-page .panel{padding:22px;margin-top:20px}.sidebar{overflow-y:auto}.sidebar nav{gap:4px;margin-top:22px}.sidebar .nav-item{font-size:16px;padding:12px 16px}.sidebar .nav-item svg{width:25px;height:25px}.login-screen small{display:block}.login-screen~#app-shell{min-height:100vh}
 .agenda-filter-details{font-size:12px;color:#617084;margin:8px 0 12px}.agenda-filter-details summary{cursor:pointer}.agenda-filter-details .filter-grid{max-width:850px}.dt-toolbar input,.dt-toolbar select{width:auto}.dt-search input{max-width:260px}.dt-footer #agenda-pager{display:flex;align-items:center;gap:8px}.dt-footer .secondary-button{font-size:12px;border-radius:3px}.dt-selection{font-size:12px}.dt-selection button{white-space:nowrap}#share-text{width:100%;border:1px solid #d1dbed;border-radius:10px;padding:14px;font:14px/1.6 Arial,sans-serif}#agenda-delete{justify-self:start;margin-top:15px}
 @media print{.agenda-filter-details{display:none!important}}
+
+/* Searchable, permission-aware master choices. */
+.searchable-choice {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+}
+.searchable-choice input {
+    width: 100%;
+    min-width: 0;
+}
+.searchable-choice select {
+    width: 100%;
+    min-width: 0;
+}
+.searchable-choice select[multiple] {
+    min-height: 110px;
+}
+.searchable-choice button {
+    text-align: left;
+    white-space: normal;
+}
+.dapukan-row {
+    padding: 12px;
+    margin: 10px 0;
+    border: 1px solid #dbe5e2;
+    border-radius: 12px;
+    background: #f6fbf9;
+}
+.check-line {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center;
+    gap: 10px;
+}
+.check-line input {
+    width: auto;
+}
+.brand-title {
+    font-size: 1.7rem;
+    color: #008c69;
+    overflow-wrap: anywhere;
+}
+.ami-datatable th:nth-child(3),
+.ami-datatable td:nth-child(3) {
+    min-width: 120px;
+}
+@media (max-width: 600px) {
+    .scope-fields.form-columns {
+        grid-template-columns: 1fr;
+    }
+}

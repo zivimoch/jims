@@ -10,7 +10,12 @@ class Activity extends Model
 
     protected function casts(): array
     {
-        return ['materials' => 'array', 'starts_at' => 'immutable_datetime', 'ends_at' => 'immutable_datetime'];
+        return ['attendance_enabled' => 'boolean', 'materials' => 'array', 'starts_at' => 'immutable_datetime', 'ends_at' => 'immutable_datetime'];
+    }
+
+    public function requiredClasses()
+    {
+        return $this->belongsToMany(MasterOption::class, 'activity_class');
     }
 
     public function attendances()

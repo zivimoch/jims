@@ -8,11 +8,15 @@ use App\Jobs\SendPush;
 use App\Models\Activity;
 use App\Models\Attendance;
 use App\Models\AuditLog;
+use App\Models\BrandSetting;
 use App\Models\Contribution;
+use App\Models\DapukanType;
 use App\Models\Group;
+use App\Models\MasterOption;
 use App\Models\Notice;
 use App\Models\PaymentAccount;
 use App\Models\PushSubscription;
+use App\Models\Region;
 use App\Models\User;
 use App\Models\Village;
 use App\Services\Scope;
@@ -60,7 +64,10 @@ class JimsController extends Controller
     {
         $u = $r->user();
 
-        return ['user' => $u->load('group', 'village'), 'villages' => Village::when(! $u->isSuper(), fn ($q) => $q->whereKey($u->village_id))->get(), 'groups' => Group::when(! $u->isSuper(), fn ($q) => $q->where('village_id', $u->village_id))->when(! $u->isSuper() && $u->group_id, fn ($q) => $q->whereKey($u->group_id))->get(), 'reverb_key' => config('broadcasting.connections.reverb.key'), 'vapid_key' => config('services.webpush.public_key')];
+        $villages = Village::all()->filter(fn ($v) => $u->canSee((object) ['village_id' => $v->id, 'group_id' => null, 'region_id' => $v->region_id]))->values();
+        $groups = Group::all()->filter(fn ($g) => $u->canSee((object) ['village_id' => $g->village_id, 'group_id' => $g->id]))->values();
+
+        return ['user' => $u->load('group', 'village', 'region', 'dapukans'), 'regions' => Region::whereIn('id', $villages->pluck('region_id'))->when($u->isSuper(), fn ($q) => $q->orWhereRaw('1=1'))->get(), 'villages' => $villages, 'groups' => $groups, 'master_classes' => Scope::visible(MasterOption::where('kind', 'class'), $u)->orderBy('name')->get(), 'dapukan_types' => DapukanType::orderBy('name')->get(), 'brand' => BrandSetting::first(), 'reverb_key' => config('broadcasting.connections.reverb.key'), 'vapid_key' => config('services.webpush.public_key')];
     }
 
     public function activities(Request $r)
@@ -68,7 +75,7 @@ class JimsController extends Controller
         $r->validate(['from' => 'nullable|date_format:Y-m-d', 'to' => 'nullable|date_format:Y-m-d', 'search' => 'nullable|string|max:200', 'class' => 'nullable|string|max:60', 'per_page' => 'nullable|integer|min:1|max:100', 'sort' => ['nullable', Rule::in(['asc', 'desc'])]]);
         $query = Scope::visible(Activity::query(), $r->user());
         if ($r->boolean('active')) {
-            $query->where('starts_at', '<=', now()->addHours(2))->where('ends_at', '>=', now()->subHours(2));
+            $query->where('attendance_enabled', true)->where('starts_at', '<=', now()->addHours(2))->where('ends_at', '>=', now()->subHours(2));
         }
         if ($r->filled('from')) {
             $query->whereDate('starts_at', '>=', $r->input('from'));
@@ -80,7 +87,7 @@ class JimsController extends Controller
             $query->where(fn ($q) => $q->where('title', 'ilike', '%'.$r->input('search').'%')->orWhere('location', 'ilike', '%'.$r->input('search').'%'));
         }
         if ($r->filled('class') && $r->input('class') !== 'all') {
-            $query->where('class_name', $r->input('class'));
+            $query->where(fn ($q) => $q->where('class_name', $r->input('class'))->orWhereHas('requiredClasses', fn ($q) => $q->where('name', $r->input('class'))));
         }
         if ($r->input('group') === 'desa') {
             $query->whereNull('group_id');
@@ -88,7 +95,7 @@ class JimsController extends Controller
             $query->where('group_id', (int) $r->input('group'));
         }
 
-        return $query->with(['group', 'village'])->withCount('attendances')->orderBy('starts_at', $r->input('sort', 'desc'))->orderBy('id')->paginate($r->integer('per_page', 100));
+        return $query->with(['group', 'village', 'requiredClasses'])->withCount('attendances')->orderBy('starts_at', $r->input('sort', 'desc'))->orderBy('id')->paginate($r->integer('per_page', 100));
     }
 
     private function scopeData(Request $r): array
@@ -113,19 +120,30 @@ class JimsController extends Controller
         }
         $previousScope = $activity?->exists ? [$activity->village_id, $activity->group_id] : null;
         $scope = $this->scopeData($r);
-        $d = $r->validate(['title' => 'required|string|max:150', 'location' => 'required|string|max:200', 'class_name' => 'required|string|max:60', 'starts_at' => 'required|date', 'ends_at' => 'required|date|after:starts_at', 'materials' => 'required|array|min:1|max:20', 'materials.*.type' => ['required', Rule::in(['Al-Quran', 'Hadist', 'CAI', 'Nasehat', 'Asad', 'Lainnya'])], 'materials.*.detail' => 'nullable|string|max:300', 'note' => 'nullable|string|max:1000', 'zoom_url' => ['nullable', 'url:https', 'max:500', function ($a, $v, $fail) {
+        $d = $r->validate(['title' => 'required|string|max:150', 'location' => 'required|string|max:200', 'class_name' => 'sometimes|string|max:60', 'attendance_enabled' => 'sometimes|boolean', 'required_class_ids' => 'sometimes|array|min:1|max:50', 'required_class_ids.*' => ['integer', Rule::exists('master_options', 'id')->where(fn ($q) => $q->where('kind', 'class')->where('village_id', $scope['village_id'])->where(fn ($q) => $q->whereNull('group_id')->orWhere('group_id', $scope['group_id'])))], 'starts_at' => 'required|date', 'ends_at' => 'required|date|after:starts_at', 'materials' => 'present|array|max:20', 'materials.*.type' => ['required', Rule::in(['Al-Quran', 'Hadist', 'CAI', 'Nasehat', 'Asad', 'ASAD', 'Musyawarah', 'Lainnya'])], 'materials.*.detail' => 'nullable|string|max:300', 'note' => 'nullable|string|max:1000', 'zoom_url' => ['nullable', 'url:https', 'max:500', function ($a, $v, $fail) {
             $host = parse_url($v, PHP_URL_HOST);
             if ($host !== 'zoom.us' && ! str_ends_with($host ?? '', '.zoom.us')) {
                 $fail('Gunakan tautan HTTPS Zoom.');
             }
         }]]);
-        $saved = DB::transaction(function () use ($r, $activity, $scope, $d) {
+        $classIds = $d['required_class_ids'] ?? null;
+        unset($d['required_class_ids']);
+        $d['class_name'] = $classIds ? MasterOption::whereKey($classIds[0])->value('name') : ($d['class_name'] ?? 'Umum');
+        $saved = DB::transaction(function () use ($r, $activity, $scope, $d, $classIds) {
             $record = $activity ?? new Activity;
             $record->fill([...$d, ...$scope]);
             if (! $record->exists) {
                 $record->created_by = $r->user()->id;
             }
             $record->save();
+            if ($classIds !== null) {
+                $record->requiredClasses()->sync($classIds);
+            }
+            foreach (['title' => $record->title, 'place' => $record->location] as $kind => $name) {
+                if (! MasterOption::where('kind', $kind)->where('village_id', $record->village_id)->where('group_id', $record->group_id)->whereRaw('lower(name)=lower(?)', [$name])->exists()) {
+                    MasterOption::firstOrCreate(['kind' => $kind, 'name' => $name, 'village_id' => $record->village_id, 'group_id' => $record->group_id]);
+                }
+            }
             $this->audit($r, 'activity.saved', $record);
             NotifyActivity::dispatch($record->id)->afterCommit();
 
@@ -167,6 +185,7 @@ class JimsController extends Controller
 
     public function saveAttendance(Request $r, Activity $activity)
     {
+        abort_unless($activity->attendance_enabled, 422, 'Kegiatan ini tidak membuka absensi.');
         $d = $r->validate(['user_id' => 'sometimes|integer|exists:users,id', 'status' => ['required', Rule::in(['offline', 'online', 'izin'])], 'reason' => 'nullable|required_if:status,online,izin|string|max:200']);
         $u = $r->user();
         abort_unless($u->canSee($activity), 403);
@@ -203,7 +222,7 @@ class JimsController extends Controller
 
     public function history(Request $r)
     {
-        return Attendance::where('user_id', $r->user()->id)->with('activity')->latest('updated_at')->paginate(100);
+        return Attendance::where('user_id', $r->user()->id)->with('activity.requiredClasses')->latest('updated_at')->paginate(100);
     }
 
     private function canManageUser(User $u, User $target): bool
@@ -215,24 +234,33 @@ class JimsController extends Controller
             return false;
         }
 
-        return $target->role === 'jamaah' || ($u->group_id === null && $target->group_id !== null);
+        if ($target->role === 'jamaah') {
+            return true;
+        }
+        foreach ($u->managementScopes() as $scope) {
+            if ($scope['group_id']) {
+                continue;
+            }
+            $targetScopes = $target->managementScopes();
+            if ($targetScopes && collect($targetScopes)->every(fn ($t) => $scope['village_id'] ? ($t['village_id'] === $scope['village_id'] && $t['group_id'] !== null) : ($t['region_id'] === $scope['region_id'] && $t['village_id'] !== null))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function users(Request $r)
     {
         $u = $r->user();
         abort_if($u->role === 'jamaah', 403);
-        $query = User::query();
+        $query = Scope::management(User::query(), $u);
         if (! $u->isSuper()) {
-            $query->where('village_id', $u->village_id)->where('role', '!=', 'super_admin')->where('id', '!=', $u->id);
-            if ($u->group_id) {
-                $query->where('group_id', $u->group_id)->where('role', 'jamaah');
-            } else {
-                $query->where(fn ($q) => $q->where('role', 'jamaah')->orWhereNotNull('group_id'));
-            }
+            $allowed = Scope::management(User::query(), $u)->where('role', '!=', 'super_admin')->with('dapukans')->get()->filter(fn ($target) => $this->canManageUser($u, $target))->pluck('id');
+            $query->whereIn('id', $allowed);
         }
 
-        return $query->with('group', 'village')->when($r->filled('search'), fn ($q) => $q->where('name', 'ilike', '%'.$r->string('search').'%'))->orderBy('name')->paginate(100);
+        return $query->with('group', 'village', 'region', 'dapukans')->when($r->filled('search'), fn ($q) => $q->where(fn ($q) => $q->where('name', 'ilike', '%'.$r->input('search').'%')->orWhereRaw('name % ?', [$r->input('search')])))->orderBy('name')->paginate(100);
     }
 
     public function saveUser(Request $r, ?User $user = null)
@@ -243,27 +271,51 @@ class JimsController extends Controller
             abort_unless($this->canManageUser($actor, $user), 403);
         }
         $this->normalizePhone($r);
-        $d = $r->validate(['name' => 'required|string|max:100', 'phone' => ['required', 'string', 'regex:/^08[0-9]{8,11}$/', Rule::unique('users')->ignore($user?->id)], 'role' => ['required', Rule::in(['super_admin', 'pengurus', 'jamaah'])], 'active' => 'required|boolean', 'village_id' => 'nullable|integer|exists:villages,id', 'group_id' => ['nullable', 'integer', Rule::exists('groups', 'id')->where('village_id', $r->input('village_id'))]]);
+        $d = $r->validate(['name' => 'required|string|max:100', 'phone' => ['required', 'string', 'regex:/^08[0-9]{8,11}$/', Rule::unique('users')->ignore($user?->id)], 'region_id' => 'nullable|integer|exists:regions,id', 'address' => 'nullable|string|max:500', 'dapukans' => 'sometimes|array|max:30', 'dapukans.*.dapukan_type_id' => 'required|integer|exists:dapukan_types,id', 'dapukans.*.region_id' => 'required|integer|exists:regions,id', 'dapukans.*.village_id' => 'nullable|integer|exists:villages,id', 'dapukans.*.group_id' => 'nullable|integer|exists:groups,id', 'role' => ['required', Rule::in(['super_admin', 'pengurus', 'jamaah'])], 'active' => 'required|boolean', 'village_id' => 'nullable|integer|exists:villages,id', 'group_id' => ['nullable', 'integer', Rule::exists('groups', 'id')->where('village_id', $r->input('village_id'))]]);
         if (! $user) {
             $d['password'] = Str::random(64);
         }
-        if ($d['role'] !== 'super_admin') {
-            abort_unless(! empty($d['village_id']), 422, 'Pilih desa.');
-            if ($d['role'] === 'jamaah') {
-                abort_unless(! empty($d['group_id']), 422, 'Jamaah harus memiliki kelompok.');
+        $d['village_id'] = isset($d['village_id']) ? (int) $d['village_id'] : null;
+        $d['group_id'] = isset($d['group_id']) ? (int) $d['group_id'] : null;
+        $d['region_id'] = isset($d['region_id']) ? (int) $d['region_id'] : ($d['village_id'] ? Village::find($d['village_id'])->region_id : null);
+        if ($d['village_id']) {
+            abort_unless(Village::find($d['village_id'])->region_id === $d['region_id'], 422, 'Desa tidak berada di daerah yang dipilih.');
+        }
+        if ($d['role'] === 'jamaah') {
+            abort_unless($d['village_id'] && $d['group_id'], 422, 'Jamaah harus memiliki desa dan kelompok.');
+        }
+        $assignments = $d['dapukans'] ?? null;
+        unset($d['dapukans']);
+        if (! $actor->isSuper()) {
+            abort_if($assignments !== null, 403, 'Hanya super admin dapat mengatur dapukan.');
+            abort_unless($d['role'] !== 'super_admin' && $actor->manages((object) $d), 403);
+            if ($d['role'] === 'pengurus') {
+                abort_unless($user && $user->role === 'pengurus' && $user->region_id === $d['region_id'] && $user->village_id === $d['village_id'] && $user->group_id === $d['group_id'], 403);
             }
         }
-        if (! $actor->isSuper()) {
-            abort_unless($d['role'] !== 'super_admin' && $actor->manages((object) ['village_id' => $d['village_id'], 'group_id' => $d['group_id'] ?? null]) && ($d['role'] === 'jamaah' || ($actor->group_id === null && ! empty($d['group_id']))), 403);
+        if ($d['role'] === 'pengurus' && (! $user || $assignments !== null)) {
+            abort_unless(count($assignments ?? []) > 0, 422, 'Tambahkan setidaknya satu dapukan.');
         }
-        if (empty($d['password'])) {
-            unset($d['password']);
+        if ($d['role'] !== 'pengurus') {
+            $assignments = [];
         }
-        if ($d['role'] === 'super_admin') {
-            $d['village_id'] = null;
-            $d['group_id'] = null;
+        if ($assignments !== null) {
+            $assignments = array_map(function ($assignment) {
+                $assignment = ['dapukan_type_id' => (int) $assignment['dapukan_type_id'], 'region_id' => (int) $assignment['region_id'], 'village_id' => empty($assignment['village_id']) ? null : (int) $assignment['village_id'], 'group_id' => empty($assignment['group_id']) ? null : (int) $assignment['group_id']];
+                if ($assignment['village_id']) {
+                    abort_unless(Village::find($assignment['village_id'])->region_id === $assignment['region_id'], 422, 'Desa dapukan tidak sesuai daerah.');
+                }
+                if ($assignment['group_id']) {
+                    abort_unless(Group::find($assignment['group_id'])->village_id === $assignment['village_id'], 422, 'Kelompok dapukan tidak sesuai desa.');
+                }
+
+                return $assignment;
+            }, $assignments);
         }
-        $saved = DB::transaction(function () use ($r, $user, $d) {
+        if ($assignments !== null) {
+            $assignments = collect($assignments)->unique(fn ($a) => implode(':', $a))->values()->all();
+        }
+        $saved = DB::transaction(function () use ($r, $user, $d, $assignments) {
             $admins = User::where('role', 'super_admin')->where('active', true)->lockForUpdate()->get();
             if ($user?->isSuper() && $user->active && ($d['role'] !== 'super_admin' || ! $d['active'])) {
                 abort_unless($admins->count() > 1, 422, 'Super admin aktif terakhir tidak dapat dinonaktifkan.');
@@ -272,6 +324,10 @@ class JimsController extends Controller
             $record->fill($d);
             $record->setRememberToken(Str::random(60));
             $record->save();
+            if ($assignments !== null) {
+                $record->dapukans()->delete();
+                $record->dapukans()->createMany($assignments);
+            }
             $this->audit($r, 'user.saved', $record);
             DB::table('sessions')->where('user_id', $record->id)->delete();
             PushSubscription::where('user_id', $record->id)->delete();
@@ -287,10 +343,11 @@ class JimsController extends Controller
 
     public function profile(Request $r)
     {
-        $d = $r->validate(['name' => 'required|string|max:100']);
+        $this->normalizePhone($r);
+        $d = $r->validate(['name' => 'required|string|max:100', 'phone' => ['sometimes', 'required', 'string', 'regex:/^08[0-9]{8,11}$/', Rule::unique('users')->ignore($r->user()->id)], 'email' => ['nullable', 'email', 'max:200', Rule::unique('users')->ignore($r->user()->id)], 'address' => 'nullable|string|max:500', 'region_id' => 'prohibited', 'village_id' => 'prohibited', 'group_id' => 'prohibited', 'role' => 'prohibited', 'active' => 'prohibited', 'dapukans' => 'prohibited']);
         $r->user()->update($d);
 
-        return $r->user();
+        return $r->user()->load('group', 'village', 'region', 'dapukans');
     }
 
     public function contributions(Request $r)

@@ -14,7 +14,10 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withBroadcasting(__DIR__.'/../routes/channels.php', ['middleware' => ['web', 'auth', ActiveAccount::class]])
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        $proxies = array_filter(explode(',', env('TRUSTED_PROXIES', '')));
+        if ($proxies) {
+            $middleware->trustProxies(at: $proxies);
+        }
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

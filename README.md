@@ -1,6 +1,46 @@
-# JiMS — Jipi Management System
+# JiMS — Sistem Jamaah Daerah, Desa, dan Kelompok
 
 Aplikasi jamaah berbasis **Laravel 13, PHP 8.4, PostgreSQL 17, Docker Compose, Laravel Reverb, dan PWA**. Tampilan mengadaptasi prototype JiMS di `prototype/`. Data aplikasi disimpan di PostgreSQL dan terhubung antar perangkat setelah login.
+
+## Digunakan oleh jamaah di wilayah lain
+
+JiMS berawal dari kebutuhan Desa Jipi. Nama tersebut adalah identitas awal, **bukan batas wilayah sistem**. Satu instalasi dapat melayani satu desa, seluruh daerah, atau beberapa daerah. Jumlah desa dan kelompok tidak dikunci menjadi tiga; Kelompok 1–3 hanya data contoh.
+
+```text
+Daerah
+├── Desa 9
+│   ├── Kelompok 1
+│   ├── Kelompok 2
+│   └── Kelompok 3
+└── Desa lainnya
+    ├── Kelompok A
+    └── Kelompok B
+```
+
+Super admin dapat menggunakan **Master data → Ubah identitas aplikasi** untuk mengganti nama, deskripsi, dan desa default AMI. Nama diterapkan pada halaman masuk, navigasi, footer, judul browser, dan manifest PWA. Saat nama bukan JiMS, logo tulisan JiMS diganti nama aplikasi. Ikon PWA 192/512 dan aset logo masih berupa aset lokal; untuk mengganti gambar, ganti berkas di `server/public/icons/` dan `server/public/assets/jims-logo.png`, lalu build ulang. Browser dapat menunda pembaruan identitas aplikasi yang sudah terpasang.
+
+Langkah memakai sistem untuk wilayah sendiri:
+
+1. Jalankan lokal dengan data contoh untuk mempelajari fitur.
+2. Masuk sebagai super admin. Pada **Master data**, tambahkan daerah, kemudian desa dengan daerah induknya, dan kelompok dengan desa induknya. Nama boleh sama di induk yang berbeda.
+3. Tambahkan jenis **Dapukan**, misalnya Kiyai, Mubalegh, Kepala Sekolah Karakter, atau Keuangan.
+4. Pada **Kelola Akun → Tambah akun**, isi nama, nomor WA, peran, dan wilayah asal. Untuk pengurus, tambahkan satu atau beberapa dapukan beserta wilayah tugasnya.
+5. Pengurus membuka **Kelas → Kelola kelas** untuk menambah kelas dalam lingkup tugasnya. Setelah itu buat AMI dan pilih kelas yang wajib hadir.
+6. Tentukan nama/desa default instalasi. Nonaktifkan akun demo sebelum penggunaan sungguhan. Mode login tanpa OTP ini belum membuktikan kepemilikan nomor; jangan memperlakukannya sebagai autentikasi siap produksi.
+
+Wilayah asal pengguna (`region_id`, `village_id`, `group_id`) **terpisah** dari penugasan (`user_dapukans`). Contoh: satu pengguna tinggal di Kelompok 1, memiliki dapukan **Kiyai Kelompok** di kelompok itu dan **Keuangan Daerah** di daerah yang sama. Setiap dapukan memiliki jenis dan lingkup sendiri; label tidak disimpan sebagai teks gabungan yang sulit dipisahkan. Master jenis dapukan dan penetapan dapukan hanya dapat diubah super admin.
+
+Pengurus daerah mendapat hak kelola di seluruh desa/kelompok daerah tersebut. Pengurus desa mendapat hak di desa dan kelompok di bawahnya. Pengurus kelompok terbatas pada kelompok yang ditugaskan. Beberapa dapukan menggabungkan lingkup tersebut, tanpa memberi akses daerah lain. Nama jenis dapukan saat ini merupakan label tugas; belum ada matriks izin fitur terpisah untuk Kiyai versus Keuangan. Peran akses tetap tiga: `super_admin`, `pengurus`, `jamaah`.
+
+## AMI dan pilihan cerdas
+
+Tabel AMI menampilkan **Tanggal, Jam, Tempat, Agenda, Wajib Hadir**. Catatan tampil sebagai **NB : ...** di bawah judul agenda. Formulir menyediakan judul, tanggal/jam mulai-selesai, tempat, beberapa kelas wajib hadir, desa, kelompok, materi, NB, opsi Zoom, dan centang **Buatkan Absennya**. Materi: Al-Quran, Hadist, Nasehat, ASAD, Musyawarah, Lainnya. Desa awal contoh adalah **Desa 9**; desa default bisa diganti dan hanya ditampilkan jika pengguna memiliki akses. Kelompok kosong berarti kegiatan tingkat desa. Centang absensi mati berarti kegiatan tetap ada di AMI tetapi tidak menerima pencatatan absensi. Wajib Hadir adalah sasaran kelas, bukan keanggotaan kelas pengguna atau larangan bagi jamaah lain untuk hadir.
+
+Pilihan master memiliki pencarian dengan **PostgreSQL `pg_trgm` + indeks GIN**: kecocokan persis/prefix diprioritaskan, potongan nama dan kemiripan ejaan disertakan. Contoh `Caberwit` dapat menemukan `Caberawit`. Pencarian dikirim setelah jeda mengetik, dibatasi 50 hasil, dan selalu dibatasi wilayah pengguna. Pencarian pilihan tetap seperti peran/status menggunakan pencocokan lokal. Ini pencarian kemiripan teks, bukan AI semantik. Lihat [dokumentasi resmi pg_trgm](https://www.postgresql.org/docs/17/pgtrgm.html).
+
+Jika nama master belum tersedia, tombol **Tambahkan** muncul bagi pengguna yang berwenang. Daerah/desa/kelompok/dapukan hanya super admin; kelas/tempat/judul untuk pengurus sesuai lingkup. Judul dan tempat baru juga disimpan sebagai pilihan saat agenda disimpan. Pilihan peran/status tidak dapat ditambah karena merupakan aturan aplikasi. Kelas dapat dicari dan dipilih lebih dari satu. Nama duplikat dalam lingkup sama digunakan ulang. Induk master tidak dapat dipindahkan setelah dibuat; data yang masih direferensikan tidak dapat dihapus.
+
+Elasticsearch belum diperlukan untuk kebutuhan pilihan nama saat ini: pencarian tetap di database yang sama sehingga tidak perlu layanan tambahan dan sinkronisasi indeks terpisah. Evaluasi mesin pencarian terpisah jika ukuran data, bahasa, atau kebutuhan ranking berkembang berdasarkan pengukuran.
 
 ## Jalankan lokal
 
@@ -38,23 +78,24 @@ Perintah itu hanya mengubah tanggal kegiatan bertanda contoh; tidak mengubah keg
 
 ## Hak akses
 
-| Kemampuan | Super admin | Pengurus desa | Pengurus kelompok | Jamaah |
-| --- | --- | --- | --- | --- |
-| Kelola semua akun dan fitur | Ya | Tidak | Tidak | Tidak |
-| Kelola pengurus kelompok | Semua | Di desanya | Tidak | Tidak |
-| Kelola akun jamaah | Semua | Di desanya | Kelompok sendiri | Tidak |
-| Buat/edit/hapus AMI dan rekening | Semua | Desa dan kelompok di bawahnya | Kelompok sendiri | Tidak |
-| Lihat AMI | Semua | Seluruh desa sendiri | Desa + kelompok sendiri | Desa + kelompok sendiri |
-| Catat absensi orang lain | Semua | Lingkup yang dikelola | Jamaah kelompok sendiri | Tidak |
-| Profil, absensi, riwayat pribadi | Ya | Ya | Ya | Ya |
-| Catatan shodakoh | Semua | Lingkup desa | Lingkup kelompok | Milik sendiri |
-| Log aktivitas | Ya | Tidak | Tidak | Tidak |
+| Kemampuan | Super admin | Pengurus | Jamaah |
+| --- | --- | --- | --- |
+| Master wilayah, identitas aplikasi, jenis/penetapan dapukan | Semua | Tidak | Tidak |
+| Membuat/mengelola akun jamaah | Semua | Lingkup dapukan | Tidak |
+| Menetapkan peran pengurus/super admin | Ya | Tidak | Tidak |
+| AMI, kelas, tempat, dan rekening | Semua | Lingkup dapukan | Baca yang diizinkan |
+| Absensi orang lain | Semua | Jamaah dalam lingkup tugas dan kegiatan | Tidak |
+| Profil, absensi, riwayat pribadi | Ya | Ya | Ya |
+| Catatan shodakoh | Semua | Lingkup tugas | Milik sendiri |
+| Log aktivitas | Ya | Tidak | Tidak |
+
+Pada **Profil saya**, pengguna dapat mengganti nama, WA, email opsional, dan alamat. Wilayah, peran, status aktif, dan dapukan tidak dapat diubah sendiri melalui endpoint profil. Akun pengurus lama tanpa penugasan masih membaca lingkup lama sebagai kompatibilitas; akun pengurus baru wajib mempunyai dapukan.
 
 Pemeriksaan dilakukan pada **server**, termasuk kanal WebSocket privat; menyembunyikan tombol bukan satu-satunya pembatas. Pengurus tidak dapat menaikkan dirinya menjadi super admin. Menonaktifkan/mengubah akun mengakhiri sesi masuk akun tersebut. Super admin aktif terakhir tidak dapat dinonaktifkan. Penonaktifan dipakai agar riwayat akun tidak hilang.
 
 ## Fitur
 
-- AMI: tabel ringkas sesuai prototype, tanpa checkbox. Klik/tap dua kali atau Enter pada baris untuk edit/hapus bagi pengurus yang berwenang. Mendukung jumlah baris, urutan tanggal, pencarian, filter, Copy, PDF/Cetak, berbagi halaman ke WhatsApp, dan mode baca. Kegiatan memuat kelas, lokasi, materi multi-pilih, jam WIB, catatan, dan link HTTPS Zoom.
+- AMI: tabel ringkas sesuai prototype, tanpa checkbox. Klik/tap dua kali atau Enter pada baris untuk edit/hapus bagi pengurus yang berwenang. Mendukung jumlah baris, urutan tanggal, pencarian, filter, Copy, PDF/Cetak, berbagi halaman ke WhatsApp, dan mode baca. Kegiatan memuat kelas wajib hadir, tempat, materi multi-pilih, jam WIB, NB, dan link HTTPS Zoom.
 - Absen: pilih kegiatan/lokasi secara eksplisit, hadir offline, online atau izin beserta alasan, batalkan absensi selama jendela waktu berlangsung. Tombol sidik jari adalah kontrol tap/geser, bukan pembaca biometrik.
 - Absensi dibuka dua jam sebelum mulai hingga dua jam sesudah selesai. Kunci unik database mencegah duplikasi; identitas pencatat terpisah dari identitas jamaah.
 - Riwayat dan ketercapaian materi dari absensi offline/online. Catatan shodakoh kategori Kas dan Tabungan Jalan-jalan; tidak memverifikasi transfer. Rekening/QRIS contoh diberi label dummy.
@@ -79,6 +120,8 @@ docker compose logs --tail=100 app queue reverb
 
 # Setelah mengubah kode (image produksi lokal tidak memakai bind mount)
 docker compose up -d --build
+docker compose exec app php artisan migrate --force
+docker compose restart jims
 
 # Hentikan tanpa menghapus data
 docker compose down
@@ -102,7 +145,7 @@ docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/server:/var/www/html" jims-p
 ./scripts/test.sh
 ```
 
-Runner menolak koneksi selain `jims_testing` sebelum migrasi pengujian. Data dummy pada database `jims` tetap dipertahankan. Cakupan mencakup hak akses, isolasi kelompok/desa, anti-escalation, jendela absensi, duplikasi, kerahasiaan alasan, kanal privat, dan endpoint push.
+Runner menolak koneksi selain `jims_testing` sebelum migrasi pengujian. Data dummy pada database `jims` tetap dipertahankan. Cakupan mencakup multi-dapukan, isolasi daerah/desa/kelompok, master dan pencarian toleran salah ketik, profil yang mengunci wilayah, branding/PWA, kelas wajib hadir, penutupan absensi, anti-escalation, jendela absensi, duplikasi, kerahasiaan alasan, kanal privat, dan endpoint push.
 
 ## Struktur
 
@@ -115,9 +158,14 @@ Referensi implementasi: [Laravel Reverb](https://laravel.com/docs/13.x/reverb), 
 
 ## Status verifikasi lokal
 
-- Tes backend dijalankan dengan PostgreSQL terpisah (25 tes, 68 assertions, termasuk login WA dan pemulihan sesi melalui cookie).
+- Tes backend dijalankan dengan PostgreSQL terpisah; mencakup login WA, pemulihan sesi, hierarki daerah, multi-dapukan, profil, master, dan AMI.
+- Formulir dua dapukan pada tingkat berbeda, pencarian `Caberwit` → `Caberawit`, dan penyimpanan AMI dengan dua kelas wajib hadir sudah diperiksa di browser.
 - Login jamaah, absensi tersimpan, kontrol AMI baca-saja untuk jamaah, dan layout 390 piksel diperiksa melalui browser.
 - Agenda baru dari sesi admin terpisah muncul pada sesi jamaah lewat WebSocket tanpa reload manual; notifikasi dalam aplikasi juga tersimpan.
 - Request login tanpa CSRF token ditolak HTTP 419.
 - Sampel 10 request API agenda pada Docker lokal: median sekitar **86 ms**, maksimum **111 ms**. Ini pengukuran lokal dengan data dummy, bukan jaminan kecepatan pada VPS atau beban banyak pengguna.
 - Web Push sudah terimplementasi; browser pengujian tidak memberikan izin notifikasi. Pengiriman notifikasi OS ketika aplikasi ditutup masih perlu verifikasi pada perangkat/browser yang mengizinkannya, termasuk Android/iPhone dan HTTPS publik.
+
+## Deploy ke VPS bersama
+
+Konfigurasi Compose terpisah dan panduan Caddy ada di [deploy/README.md](deploy/README.md). Target JiMS adalah `jims.zivi.zip`; DNS A bernama `jims` mengarah ke VPS. Status online harus diverifikasi setelah DNS dan HTTPS siap.

@@ -21,8 +21,11 @@ class NotifyActivity implements ShouldQueue
         if (! $a) {
             return;
         }
-        User::where('active', true)->where('village_id', $a->village_id)->when($a->group_id, fn ($q) => $q->where(fn ($q) => $q->where('group_id', $a->group_id)->orWhere(fn ($q) => $q->where('role', 'pengurus')->whereNull('group_id'))))->chunkById(100, function ($users) use ($a) {
+        User::where('active', true)->with('dapukans')->chunkById(100, function ($users) use ($a) {
             foreach ($users as $u) {
+                if (! $u->canSee($a)) {
+                    continue;
+                }
                 Notice::create(['user_id' => $u->id, 'title' => 'Pembaruan kegiatan', 'body' => $a->title.' · '.$a->starts_at->format('d/m/Y H:i')]);
                 DataChanged::dispatch($a->village_id, $a->group_id, $u->id);
                 SendPush::dispatch($u->id, 'Pembaruan kegiatan JiMS', 'Buka JiMS untuk melihat agenda terbaru.');

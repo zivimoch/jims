@@ -27,7 +27,7 @@ const state = {
     villages: [],
     agendaPage: 1,
 };
-const classes = [
+let classes = [
     "Umum",
     "Bapak-bapak",
     "Ibu-ibu",
@@ -40,9 +40,9 @@ const classes = [
 const materialTypes = [
     "Al-Quran",
     "Hadist",
-    "CAI",
     "Nasehat",
-    "Asad",
+    "ASAD",
+    "Musyawarah",
     "Lainnya",
 ];
 const statusLabels = {
@@ -81,11 +81,25 @@ const money = (v) =>
         currency: "IDR",
         maximumFractionDigits: 0,
     }).format(v);
-const manages = (a) =>
-    state.user?.role === "super_admin" ||
-    (state.user?.role === "pengurus" &&
-        state.user.village_id === a.village_id &&
-        (state.user.group_id === null || state.user.group_id === a.group_id));
+const manages = (a) => {
+    if (state.user?.role === "super_admin") return true;
+    if (state.user?.role !== "pengurus") return false;
+    const scopes = state.user.dapukans?.length
+        ? state.user.dapukans
+        : [state.user];
+    return scopes.some((d) =>
+        d.group_id
+            ? d.group_id === a.group_id && d.village_id === a.village_id
+            : d.village_id
+              ? d.village_id === a.village_id
+              : d.region_id ===
+                (a.region_id ||
+                    state.villages.find((v) => v.id === a.village_id)
+                        ?.region_id),
+    );
+};
+const requiredText = (a) =>
+    a.required_classes?.map((c) => c.name).join(", ") || a.class_name || "Umum";
 const selected = () =>
     state.activeActivities.find((a) => a.id === state.selected);
 const materialText = (a) =>
@@ -172,6 +186,7 @@ function dialog(title, html, onSubmit, submitLabel = "Simpan") {
     $("#dialog-form button[type=submit]").hidden = !onSubmit;
     dialogSubmit = onSubmit;
     $("#dialog").showModal();
+    enhanceChoices($("#dialog-fields"));
 }
 $("#dialog-form").onsubmit = async (e) => {
     e.preventDefault();
@@ -216,7 +231,10 @@ function nav() {
         ["notifications", "moon", "Notifikasi"],
     ];
     if (state.user.role !== "jamaah")
-        items.push(["users", "users", "Kelola Akun"]);
+        items.push(
+            ["users", "users", "Kelola Akun"],
+            ["masters", "users", "Master data"],
+        );
     if (state.user.role === "super_admin")
         items.push(["audit", "history", "Log Aktivitas"]);
     const html = ([page, symbol, title]) =>
@@ -264,7 +282,7 @@ function nav() {
 }
 async function start() {
     try {
-        Object.assign(state, await api("/bootstrap"));
+        await refreshOptions();
         $("#login-screen").hidden = true;
         $("#app-shell").hidden = false;
         nav();
@@ -286,7 +304,11 @@ document.addEventListener("input", (event) => {
         const before = field.value.slice(0, caret).replace(/[\s-]/g, "");
         field.value = field.value.replace(/[\s-]/g, "");
         field.setSelectionRange(before.length, before.length);
-        field.setCustomValidity(field.value && !/^08[0-9]{8,11}$/.test(field.value) ? "Gunakan nomor WA berawalan 08, sepanjang 10–13 digit (bukan 62)." : "");
+        field.setCustomValidity(
+            field.value && !/^08[0-9]{8,11}$/.test(field.value)
+                ? "Gunakan nomor WA berawalan 08, sepanjang 10–13 digit (bukan 62)."
+                : "",
+        );
     }
 });
 $("#login-form").onsubmit = async (e) => {
@@ -332,7 +354,7 @@ function renderActivities() {
         active
             .map(
                 (a) =>
-                    `<button class="event-card ${a.id === state.selected ? "selected" : ""}" data-event="${a.id}" aria-pressed="${a.id === state.selected}"><span class="event-icon">${icon("users")}</span><div class="event-heading"><h2 class="event-title">${esc(a.title)}</h2></div><span class="selection-mark">${a.id === state.selected ? icon("check") : ""}</span><span class="event-labels"><span class="badge">${esc(a.group?.name || "Desa")}</span><span class="badge class-badge">${esc(a.class_name)}</span><span class="status-marquee is-live"><span>Sedang berlangsung</span></span></span><span class="event-detail">${icon("pin")}<span>${esc(a.location)}</span></span><span class="event-detail">${icon("calendar")}<span>${esc(fmt(a.starts_at))} – ${esc(clock(a.ends_at))} WIB</span></span><span class="event-detail event-material">${icon("book")}<span><b>Materi</b><span>${esc(materialText(a))}</span></span></span>${a.note ? `<span class="event-note"><b>Keterangan</b><span>${esc(a.note)}</span></span>` : ""}</button>`,
+                    `<button class="event-card ${a.id === state.selected ? "selected" : ""}" data-event="${a.id}" aria-pressed="${a.id === state.selected}"><span class="event-icon">${icon("users")}</span><div class="event-heading"><h2 class="event-title">${esc(a.title)}</h2></div><span class="selection-mark">${a.id === state.selected ? icon("check") : ""}</span><span class="event-labels"><span class="badge">${esc(a.group?.name || "Desa")}</span><span class="badge class-badge">${esc(requiredText(a))}</span><span class="status-marquee is-live"><span>Sedang berlangsung</span></span></span><span class="event-detail">${icon("pin")}<span>${esc(a.location)}</span></span><span class="event-detail">${icon("calendar")}<span>${esc(fmt(a.starts_at))} – ${esc(clock(a.ends_at))} WIB</span></span><span class="event-detail event-material">${icon("book")}<span><b>Materi</b><span>${esc(materialText(a))}</span></span></span>${a.note ? `<span class="event-note"><b>Keterangan</b><span>${esc(a.note)}</span></span>` : ""}</button>`,
             )
             .join("") ||
         '<div class="empty-events">Tidak ada kegiatan yang sedang berlangsung. Lihat agenda di menu AMI.</div>';
@@ -589,6 +611,7 @@ const pageTitles = {
     users: "Kelola Akun",
     notifications: "Notifikasi",
     audit: "Log Aktivitas",
+    masters: "Master & Identitas",
 };
 async function showPage(page) {
     state.page = page;
@@ -613,41 +636,117 @@ async function showPage(page) {
     if (page === "users") await renderUsers();
     if (page === "notifications") await renderNotifications();
     if (page === "audit") await renderAudit();
+    if (page === "masters") await renderMasters();
+    enhanceChoices($("#" + page + "-page"));
 }
-function scopeFields(record = {}) {
-    const villages = state.villages.map((v) => [v.id, v.name]);
-    const village =
-        record.village_id || state.user.village_id || villages[0]?.[0];
-    const groups = state.groups.filter((g) => g.village_id === Number(village));
+function preferredVillage(record = {}) {
     return (
-        '<div class="form-columns">' +
-        select("Desa", "village_id", villages, village) +
-        select(
-            "Lingkup",
+        record.village_id ||
+        state.villages.find((v) => v.id === state.brand?.default_village_id)
+            ?.id ||
+        state.user.village_id ||
+        state.villages[0]?.id
+    );
+}
+function scopeFields(record = {}, includeRegion = false) {
+    const villageId = preferredVillage(record);
+    const regionId =
+        record.region_id ??
+        state.villages.find((v) => v.id === villageId)?.region_id ??
+        state.user.region_id ??
+        state.regions[0]?.id;
+    const villages = state.villages.filter(
+        (v) => !includeRegion || v.region_id === Number(regionId),
+    );
+    const groups = state.groups.filter(
+        (g) => g.village_id === Number(villageId),
+    );
+    return (
+        '<div class="scope-fields form-columns">' +
+        (includeRegion
+            ? masterSelect(
+                  "Daerah",
+                  "region_id",
+                  state.regions,
+                  regionId,
+                  "region",
+              )
+            : "") +
+        masterSelect(
+            "Desa",
+            "village_id",
+            villages,
+            villageId,
+            "village",
+            includeRegion ? "Tanpa desa (daerah)" : null,
+        ) +
+        masterSelect(
+            "Kelompok",
             "group_id",
-            [
-                ...(state.user.group_id ? [] : [["", "Desa (semua kelompok)"]]),
-                ...groups.map((g) => [g.id, g.name]),
-            ],
-            record.group_id ?? state.user.group_id ?? "",
+            groups,
+            record.group_id ?? (record.id ? "" : state.user.group_id) ?? "",
+            "group",
+            "Semua kelompok (level desa)",
         ) +
         "</div>"
     );
 }
-function bindScope() {
-    const village = $("#dialog-form [name=village_id]");
-    if (!village) return;
-    village.onchange = () => {
-        const group = $("#dialog-form [name=group_id]");
-        group.innerHTML =
-            (state.user.group_id
-                ? ""
-                : '<option value="">Desa (semua kelompok)</option>') +
-            state.groups
-                .filter((g) => g.village_id === Number(village.value))
-                .map((g) => `<option value="${g.id}">${esc(g.name)}</option>`)
-                .join("");
-    };
+function bindScope(root = $("#dialog-fields")) {
+    root.querySelectorAll(".scope-fields").forEach((box) => {
+        if (box.dataset.bound) return;
+        box.dataset.bound = "true";
+        const region = box.querySelector("[name=region_id]"),
+            village = box.querySelector("[name=village_id]"),
+            group = box.querySelector("[name=group_id]");
+        const rebuildGroup = () => {
+            group.innerHTML =
+                '<option value="">Semua kelompok (level desa)</option>' +
+                state.groups
+                    .filter((g) => g.village_id === Number(village.value))
+                    .map(
+                        (g) =>
+                            `<option value="${g.id}">${esc(g.name)}</option>`,
+                    )
+                    .join("");
+            group.dispatchEvent(new Event("choices-updated"));
+            refreshClassChoices();
+        };
+        village.addEventListener("change", rebuildGroup);
+        group.addEventListener("change", refreshClassChoices);
+        if (region)
+            region.addEventListener("change", () => {
+                village.innerHTML =
+                    '<option value="">Tanpa desa (daerah)</option>' +
+                    state.villages
+                        .filter((v) => v.region_id === Number(region.value))
+                        .map(
+                            (v) =>
+                                `<option value="${v.id}">${esc(v.name)}</option>`,
+                        )
+                        .join("");
+                village.dispatchEvent(new Event("choices-updated"));
+                rebuildGroup();
+            });
+    });
+}
+function refreshClassChoices() {
+    const choice = $("#dialog-fields [name=required_class_ids]");
+    if (!choice) return;
+    const ids = [...choice.selectedOptions].map((o) => o.value),
+        village = Number($("#dialog-fields [name=village_id]").value),
+        group = Number($("#dialog-fields [name=group_id]").value);
+    choice.innerHTML = (state.master_classes || [])
+        .filter(
+            (c) =>
+                c.village_id === village &&
+                (!c.group_id || c.group_id === group),
+        )
+        .map(
+            (c) =>
+                `<option value="${c.id}" ${ids.includes(String(c.id)) ? "selected" : ""}>${esc(c.name)}</option>`,
+        )
+        .join("");
+    choice.dispatchEvent(new Event("choices-updated"));
 }
 function editActivity(activity) {
     if (activity && !manages(activity)) return;
@@ -663,10 +762,25 @@ function editActivity(activity) {
             : "20:00";
     dialog(
         a.id ? "Edit kegiatan" : "Buat Kegiatan Baru",
-        input("Nama kegiatan", "title", a.title) +
-            input("Lokasi", "location", a.location) +
+        suggestInput("Judul kegiatan", "title", a.title, "title") +
+            suggestInput("Tempat", "location", a.location, "place") +
             scopeFields(a) +
-            `<label>Kelas<input name="class_name" list="class-options" value="${esc(a.class_name || "Umum")}" required maxlength="60"><datalist id="class-options">${classes.map((c) => `<option>${c}</option>`).join("")}</datalist></label>` +
+            `<label>Wajib Hadir<select name="required_class_ids" multiple required size="4" data-master="class">${(
+                state.master_classes || []
+            )
+                .filter(
+                    (c) =>
+                        c.village_id === preferredVillage(a) &&
+                        (!c.group_id ||
+                            c.group_id === (a.group_id || state.user.group_id)),
+                )
+                .map(
+                    (c) =>
+                        `<option value="${c.id}" ${a.required_classes?.some((r) => r.id === c.id) || (!a.id && c.name === "Umum") ? "selected" : ""}>${esc(c.name)}</option>`,
+                )
+                .join(
+                    "",
+                )}</select><small>Bisa pilih beberapa kelas (Ctrl/Cmd + klik pada desktop).</small></label>` +
             input("Tanggal", "date", date, "date") +
             '<div class="form-columns">' +
             input("Waktu mulai (WIB)", "start", time(a.starts_at), "time") +
@@ -691,7 +805,7 @@ function editActivity(activity) {
                 "url",
                 false,
             ) +
-            `<label>Keterangan<textarea name="note" maxlength="1000">${esc(a.note)}</textarea></label>`,
+            `<label>Catatan / NB<textarea name="note" maxlength="1000">${esc(a.note)}</textarea></label><label class="check-line"><input type="checkbox" name="attendance_enabled" ${a.attendance_enabled !== false ? "checked" : ""}> Buatkan Absennya</label>`,
         async (d) => {
             const materials = materialTypes.flatMap((type, i) =>
                 d["material_" + i] ? [{ type, detail: d["detail_" + i] }] : [],
@@ -704,7 +818,11 @@ function editActivity(activity) {
                     location: d.location,
                     village_id: Number(d.village_id),
                     group_id: d.group_id ? Number(d.group_id) : null,
-                    class_name: d.class_name,
+                    required_class_ids: [
+                        ...$("#dialog-form [name=required_class_ids]")
+                            .selectedOptions,
+                    ].map((o) => Number(o.value)),
+                    attendance_enabled: !!d.attendance_enabled,
                     starts_at: `${d.date}T${d.start}:00+07:00`,
                     ends_at: `${d.date}T${d.end}:00+07:00`,
                     materials,
@@ -717,6 +835,7 @@ function editActivity(activity) {
         },
     );
     bindScope();
+    bindSuggestions();
     if (a.id) {
         $("#dialog-fields").insertAdjacentHTML(
             "beforeend",
@@ -806,11 +925,11 @@ function renderAgendaRows() {
             previousDate = date;
             const editable = manages(a),
                 status = activityStatus(a);
-            return `<tr ${editable ? `data-edit-event="${a.id}" tabindex="0" aria-label="Edit ${esc(a.title)}"` : ""}>${dateCell}<td class="dt-time">${esc(clock(a.starts_at))}<br>– ${esc(clock(a.ends_at))}</td><td class="dt-duration">${Math.round((new Date(a.ends_at) - new Date(a.starts_at)) / 60000)}</td><td><strong>${esc(a.title)}</strong><div class="dt-tags"><span>${esc(a.group?.name || "Desa")}</span><span>${esc(a.class_name)}</span></div></td><td><b>Lokasi:</b><p>${esc(a.location)}</p><b>Materi:</b><p>${esc(materialText(a))}</p>${a.note ? `<b>Keterangan:</b><p>${esc(a.note)}</p>` : ""}</td><td><span class="dt-status ${status === "Sedang berlangsung" ? "live" : ""}">${status}</span></td></tr>`;
+            return `<tr ${editable ? `data-edit-event="${a.id}" tabindex="0" aria-label="Edit ${esc(a.title)}"` : ""}>${dateCell}<td class="dt-time">${esc(clock(a.starts_at))}<br>– ${esc(clock(a.ends_at))}</td><td>${esc(a.location)}</td><td><strong>${esc(a.title)}</strong>${a.note ? `<p>NB : ${esc(a.note)}</p>` : ""}<div class="dt-tags"><span>${esc(a.village?.name || "Desa")} · ${esc(a.group?.name || "Semua kelompok")}</span></div></td><td>${esc(requiredText(a))}</td></tr>`;
         })
         .join("");
     $("#ami-results").innerHTML =
-        `<div class="dt-scroll" tabindex="0" role="region" aria-label="Tabel agenda AMI"><table class="ami-datatable"><thead><tr><th aria-sort="${agendaFilters.sort === "asc" ? "ascending" : "descending"}"><button id="ami-sort-date">Tanggal ${agendaFilters.sort === "asc" ? "↑" : "↓"}</button></th><th>Jam</th><th>Durasi<br>(menit)</th><th>Agenda</th><th>Rincian</th><th>Status</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="empty">Tidak ada kegiatan yang cocok.</td></tr>'}</tbody></table></div>`;
+        `<div class="dt-scroll" tabindex="0" role="region" aria-label="Tabel agenda AMI"><table class="ami-datatable"><thead><tr><th aria-sort="${agendaFilters.sort === "asc" ? "ascending" : "descending"}"><button id="ami-sort-date">Tanggal ${agendaFilters.sort === "asc" ? "↑" : "↓"}</button></th><th>Jam</th><th>Tempat</th><th>Agenda</th><th>Wajib Hadir</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="empty">Tidak ada kegiatan yang cocok.</td></tr>'}</tbody></table></div>`;
     $("#ami-sort-date").onclick = run(async () => {
         agendaFilters.sort = agendaFilters.sort === "asc" ? "desc" : "asc";
         state.agendaPage = 1;
@@ -872,7 +991,7 @@ function agendaText(activities) {
     return activities
         .map(
             (a) =>
-                `${a.title}\n${fmt(a.starts_at)} – ${clock(a.ends_at)} WIB\n${a.group?.name || "Desa"} · ${a.class_name}\nLokasi: ${a.location}\nMateri: ${materialText(a)}${a.note ? "\n" + a.note : ""}`,
+                `${a.title}\n${fmt(a.starts_at)} – ${clock(a.ends_at)} WIB\n${a.group?.name || "Desa"} · Wajib Hadir: ${requiredText(a)}\nLokasi: ${a.location}\nMateri: ${materialText(a)}${a.note ? "\nNB : " + a.note : ""}`,
         )
         .join("\n\n────────────\n\n");
 }
@@ -937,12 +1056,15 @@ async function renderClasses() {
     const data = await api("/history");
     const attended = data.data.filter((a) => a.status !== "izin");
     $("#classes-page").innerHTML =
-        `<h2>Ketercapaian materi</h2><p class="muted">Materi dari kegiatan yang Anda hadiri secara offline atau online.</p>${select("Kelas", "progress-class", [["all", "Semua kelas"], ...classes.map((c) => [c, c])], "all")}<div id="progress-list"></div>`;
+        `${state.user.role !== "jamaah" ? '<button id="manage-classes" class="primary-button">Kelola kelas</button>' : ""}<h2>Ketercapaian materi</h2><p class="muted">Materi dari kegiatan yang Anda hadiri secara offline atau online.</p>${select("Kelas", "progress-class", [["all", "Semua kelas"], ...classes.map((c) => [c, c])], "all")}<div id="progress-list"></div>`;
     const render = () => {
         const selectedClass = $("#classes-page select").value;
         const entries = attended.filter(
             (a) =>
                 selectedClass === "all" ||
+                a.activity.required_classes?.some(
+                    (c) => c.name === selectedClass,
+                ) ||
                 a.activity.class_name === selectedClass,
         );
         $("#progress-list").innerHTML =
@@ -950,10 +1072,15 @@ async function renderClasses() {
             entries
                 .map(
                     (a) =>
-                        `<article class="progress-row"><span class="badge class-badge">${esc(a.activity.class_name)}</span><h3>${esc(a.activity.title)}</h3><p>${esc(materialText(a.activity))}</p><small>${esc(fmt(a.activity.starts_at))}</small></article>`,
+                        `<article class="progress-row"><span class="badge class-badge">${esc(requiredText(a.activity))}</span><h3>${esc(a.activity.title)}</h3><p>${esc(materialText(a.activity))}</p><small>${esc(fmt(a.activity.starts_at))}</small></article>`,
                 )
                 .join("");
     };
+    if ($("#manage-classes"))
+        $("#manage-classes").onclick = () => {
+            masterKind = "class";
+            showPage("masters");
+        };
     $("#classes-page select").onchange = render;
     render();
 }
@@ -1083,7 +1210,7 @@ async function renderUsers(page = 1, search = "") {
         "/users?page=" + page + "&search=" + encodeURIComponent(search),
     );
     $("#users-page").innerHTML =
-        `<div class="feature-toolbar"><h2>Akun ${esc(state.user.group?.name || state.user.village?.name || "JiMS")}</h2><button id="add-user" class="primary-button">＋ Tambah akun</button></div><p class="muted">${state.user.role === "super_admin" ? "Kelola semua peran dan lingkup akun." : "Akun yang dapat Anda kelola sesuai lingkup kepengurusan."}</p><form id="user-search-form" class="action-row"><input aria-label="Cari akun" id="user-search" placeholder="Cari nama…" value="${esc(search)}"><button class="secondary-button">Cari</button></form><div>${result.data.map((u) => `<article class="account-row"><div><h3>${esc(u.name)} ${u.active ? "" : '<span class="badge inactive">Nonaktif</span>'}</h3><p>${esc(u.phone || "Nomor WA belum diisi")}</p><p>${roles[u.role]} · ${esc(u.group?.name || u.village?.name || "Semua wilayah")}</p></div><button class="text-button" data-user="${u.id}">Kelola</button></article>`).join("") || '<p class="empty-state">Tidak ada akun yang cocok.</p>'}</div><div id="user-pager" class="pager"></div>`;
+        `<div class="feature-toolbar"><h2>Akun ${esc(state.user.group?.name || state.user.village?.name || "JiMS")}</h2><button id="add-user" class="primary-button">＋ Tambah akun</button></div><p class="muted">${state.user.role === "super_admin" ? "Kelola semua peran dan lingkup akun." : "Akun yang dapat Anda kelola sesuai lingkup kepengurusan."}</p><form id="user-search-form" class="action-row"><input aria-label="Cari akun" id="user-search" placeholder="Cari nama…" value="${esc(search)}"><button class="secondary-button">Cari</button></form><div>${result.data.map((u) => `<article class="account-row"><div><h3>${esc(u.name)} ${u.active ? "" : '<span class="badge inactive">Nonaktif</span>'}</h3><p>${esc(u.phone || "Nomor WA belum diisi")}</p><p>${roles[u.role]} · ${esc([u.region?.name, u.village?.name, u.group?.name].filter(Boolean).join(" / ") || "Semua wilayah")}<br>${(u.dapukans || []).map((d) => `<span class="badge">${esc(d.label)}</span>`).join(" ")}</p></div><button class="text-button" data-user="${u.id}">Kelola</button></article>`).join("") || '<p class="empty-state">Tidak ada akun yang cocok.</p>'}</div><div id="user-pager" class="pager"></div>`;
     $("#add-user").onclick = () => editUser();
     $$("[data-user]").forEach(
         (b) =>
@@ -1102,18 +1229,18 @@ function editUser(u = {}) {
     const allowed =
         state.user.role === "super_admin"
             ? Object.entries(roles)
-            : state.user.group_id
-              ? [["jamaah", "Jamaah"]]
-              : [
-                    ["jamaah", "Jamaah"],
-                    ["pengurus", "Pengurus kelompok"],
-                ];
+            : u.role === "pengurus"
+              ? [["pengurus", "Pengurus"]]
+              : [["jamaah", "Jamaah"]];
     dialog(
         u.id ? "Kelola akun" : "Tambah akun",
         input("Nama lengkap", "name", u.name) +
             input("Nomor WhatsApp (08…)", "phone", u.phone, "tel") +
             select("Peran", "role", allowed, u.role || "jamaah") +
-            scopeFields(u) +
+            scopeFields(u, true) +
+            (state.user.role === "super_admin"
+                ? '<fieldset><legend>Dapukan (untuk peran pengurus)</legend><div id="dapukan-rows"></div><button type="button" id="add-dapukan" class="secondary-button">＋ Tambah dapukan</button></fieldset>'
+                : "") +
             select(
                 "Status akun",
                 "active",
@@ -1130,12 +1257,25 @@ function editUser(u = {}) {
                 u.id ? "PUT" : "POST",
                 {
                     ...d,
+                    region_id:
+                        Number(
+                            $("#dialog-fields > .scope-fields [name=region_id]")
+                                .value,
+                        ) || null,
                     village_id:
-                        d.role === "super_admin" ? null : Number(d.village_id),
+                        Number(
+                            $(
+                                "#dialog-fields > .scope-fields [name=village_id]",
+                            ).value,
+                        ) || null,
                     group_id:
-                        d.role === "super_admin" || !d.group_id
-                            ? null
-                            : Number(d.group_id),
+                        Number(
+                            $("#dialog-fields > .scope-fields [name=group_id]")
+                                .value,
+                        ) || null,
+                    ...(state.user.role === "super_admin"
+                        ? { dapukans: readDapukans() }
+                        : {}),
                     active: d.active === "1",
                 },
             );
@@ -1144,12 +1284,32 @@ function editUser(u = {}) {
             toast("Akun disimpan.");
         },
     );
+    if ($("#add-dapukan")) {
+        $("#add-dapukan").onclick = () => addDapukanRow();
+        (u.dapukans || []).forEach(addDapukanRow);
+    }
     bindScope();
 }
 $("#profile").onclick = () =>
     dialog(
         "Profil saya",
-        input("Nama lengkap", "name", state.user.name) + `<p class="muted">Nomor WhatsApp: ${esc(state.user.phone || "Belum diisi")}. Hubungi pengurus untuk mengubah nomor.</p>`,
+        input("Nama lengkap", "name", state.user.name) +
+            input("Nomor WhatsApp (08…)", "phone", state.user.phone, "tel") +
+            input(
+                "Email (opsional)",
+                "email",
+                state.user.email,
+                "email",
+                false,
+            ) +
+            input(
+                "Alamat (opsional)",
+                "address",
+                state.user.address,
+                "text",
+                false,
+            ) +
+            `<p class="muted">Wilayah: ${esc([state.user.region?.name, state.user.village?.name, state.user.group?.name].filter(Boolean).join(" / "))}. Wilayah dan dapukan hanya dapat diubah pengelola akun.</p>`,
         async (d) => {
             state.user = await api("/profile", "PATCH", d);
             $("#profile-name").textContent = state.user.name.split(" ")[0];
@@ -1300,3 +1460,428 @@ setInterval(() => {
 if ("serviceWorker" in navigator)
     navigator.serviceWorker.register("/sw.js").catch(() => {});
 start();
+
+async function refreshOptions() {
+    Object.assign(state, await api("/bootstrap"));
+    classes = [...new Set((state.master_classes || []).map((c) => c.name))];
+}
+function masterSelect(label, name, rows, value, kind, empty = null) {
+    return select(
+        label,
+        name,
+        [
+            ...(empty !== null ? [["", empty]] : []),
+            ...rows.map((r) => [r.id, r.name]),
+        ],
+        value,
+    ).replace("<select ", `<select data-master="${kind}" `);
+}
+function scopeValues(element) {
+    const row =
+        element.closest(".dapukan-row") || element.closest("form") || document;
+    const value = (name) => row.querySelector(`[name="${name}"]`)?.value || "";
+    return {
+        region_id: value("region_id"),
+        village_id: value("village_id"),
+        group_id: value("group_id"),
+    };
+}
+function fuzzyScore(a, b) {
+    a = a.toLocaleLowerCase("id");
+    b = b.toLocaleLowerCase("id");
+    if (a === b) return 10;
+    if (a.startsWith(b)) return 8;
+    if (a.includes(b)) return 6;
+    // Character bigrams also work for short Indonesian names.
+    const parts = (x) =>
+        new Set(
+            Array.from({ length: Math.max(0, x.length - 1) }, (_, i) =>
+                x.slice(i, i + 2),
+            ),
+        );
+    const x = parts(a),
+        y = parts(b);
+    return x.size + y.size
+        ? (2 * [...x].filter((t) => y.has(t)).length) / (x.size + y.size)
+        : 0;
+}
+function enhanceChoices(root) {
+    root?.querySelectorAll(
+        "select:not([data-enhanced]):not(#ami-size)",
+    ).forEach((el) => {
+        const label =
+            el.closest("label")?.firstChild?.textContent?.trim() ||
+            el.name ||
+            el.id;
+        el.setAttribute("aria-label", label);
+        el.dataset.enhanced = "true";
+        const box = document.createElement("div");
+        box.className = "searchable-choice";
+        el.parentNode.insertBefore(box, el);
+        box.append(el);
+        const search = document.createElement("input");
+        search.type = "search";
+        search.placeholder = "Cari pilihan…";
+        search.setAttribute("aria-label", "Cari pilihan " + label);
+        search.autocomplete = "off";
+        box.prepend(search);
+        let options = [...el.options].map((o) => ({
+                value: o.value,
+                text: o.textContent,
+            })),
+            sequence = 0,
+            timer;
+        el.addEventListener("choices-updated", () => {
+            options = [...el.options].map((o) => ({
+                value: o.value,
+                text: o.textContent,
+            }));
+            search.value = "";
+        });
+        const kind = el.dataset.master;
+        const canCreate =
+            kind &&
+            (["region", "village", "group", "dapukan"].includes(kind)
+                ? state.user?.role === "super_admin"
+                : state.user?.role !== "jamaah");
+        const create = document.createElement("button");
+        create.type = "button";
+        create.className = "text-button";
+        create.hidden = true;
+        box.append(create);
+        search.oninput = () => {
+            clearTimeout(timer);
+            const generation = ++sequence;
+            timer = setTimeout(
+                run(async () => {
+                    const term = search.value.trim(),
+                        selected = [...el.selectedOptions].map((o) => ({
+                            value: o.value,
+                            text: o.textContent,
+                        }));
+                    let found;
+                    if (kind) {
+                        const query = { q: term };
+                        const scope = scopeValues(el);
+                        if (kind === "village" && scope.region_id)
+                            query.region_id = scope.region_id;
+                        if (
+                            ["group", "class", "place", "title"].includes(
+                                kind,
+                            ) &&
+                            scope.village_id
+                        )
+                            query.village_id = scope.village_id;
+                        if (["class", "place", "title"].includes(kind))
+                            query.group_id = scope.group_id;
+                        const rows = await api(
+                            "/masters/" +
+                                kind +
+                                "?" +
+                                new URLSearchParams(query),
+                        );
+                        found = rows.map((r) => ({
+                            value: String(r.id),
+                            text: r.name,
+                        }));
+                    } else
+                        found = options
+                            .map((o) => ({
+                                ...o,
+                                score: fuzzyScore(o.text, term),
+                            }))
+                            .filter((o) => !term || o.score >= 0.25)
+                            .sort((a, b) => b.score - a.score);
+                    if (generation !== sequence || !el.isConnected) return;
+                    const merged = [
+                        ...found,
+                        ...selected.filter(
+                            (o) => !found.some((f) => f.value === o.value),
+                        ),
+                    ];
+                    el.innerHTML = merged
+                        .map(
+                            (o) =>
+                                `<option value="${esc(o.value)}" ${selected.some((v) => v.value === o.value) ? "selected" : ""}>${esc(o.text)}</option>`,
+                        )
+                        .join("");
+                    if (!el.multiple && !selected.length) el.selectedIndex = -1;
+                    create.hidden = !(
+                        canCreate &&
+                        term &&
+                        !found.some(
+                            (o) => o.text.toLowerCase() === term.toLowerCase(),
+                        )
+                    );
+                    create.textContent = `＋ Tambahkan “${term}”`;
+                }),
+                200,
+            );
+        };
+        create.onclick = run(async () => {
+            create.disabled = true;
+            try {
+                const scope = scopeValues(el),
+                    data = { name: search.value.trim() };
+                if (kind === "village")
+                    data.region_id = Number(scope.region_id);
+                if (["group", "class", "place", "title"].includes(kind))
+                    data.village_id = Number(scope.village_id);
+                if (["class", "place", "title"].includes(kind))
+                    data.group_id = scope.group_id
+                        ? Number(scope.group_id)
+                        : null;
+                const added = await api("/masters/" + kind, "POST", data);
+                await refreshOptions();
+                const current = [...el.options].some(
+                    (o) => o.value === String(added.id),
+                );
+                if (!current)
+                    el.add(
+                        new Option(added.name, String(added.id), false, true),
+                    );
+                else
+                    [...el.options].find(
+                        (o) => o.value === String(added.id),
+                    ).selected = true;
+                el.dispatchEvent(new Event("choices-updated"));
+                el.dispatchEvent(new Event("change", { bubbles: true }));
+                create.hidden = true;
+                toast("Pilihan ditambahkan.");
+            } finally {
+                create.disabled = false;
+            }
+        });
+    });
+}
+function suggestInput(label, name, value, kind) {
+    return `<label>${label}<input name="${name}" value="${esc(value)}" list="suggest-${name}" data-suggest="${kind}" autocomplete="off" required maxlength="${kind === "title" ? 150 : 200}"><datalist id="suggest-${name}"></datalist><small>Pilih data sebelumnya atau ketik baru; tersimpan saat kegiatan disimpan.</small></label>`;
+}
+function bindSuggestions() {
+    $$("#dialog-fields [data-suggest]").forEach((el) => {
+        let timer,
+            sequence = 0;
+        el.oninput = el.onfocus = () => {
+            clearTimeout(timer);
+            const generation = ++sequence;
+            timer = setTimeout(
+                run(async () => {
+                    const scope = scopeValues(el),
+                        rows = await api(
+                            "/masters/" +
+                                el.dataset.suggest +
+                                "?" +
+                                new URLSearchParams({
+                                    q: el.value,
+                                    village_id: scope.village_id,
+                                    group_id: scope.group_id,
+                                }),
+                        );
+                    if (generation === sequence && el.isConnected)
+                        $("#suggest-" + el.name).innerHTML = rows
+                            .map(
+                                (r) =>
+                                    `<option value="${esc(r.name)}"></option>`,
+                            )
+                            .join("");
+                }),
+                200,
+            );
+        };
+    });
+}
+function addDapukanRow(d = {}) {
+    const row = document.createElement("div");
+    row.className = "dapukan-row";
+    const region = d.region_id || state.user.region_id || state.regions[0]?.id;
+    row.innerHTML =
+        masterSelect(
+            "Dapukan",
+            "dapukan_type_id",
+            state.dapukan_types,
+            d.dapukan_type_id,
+            "dapukan",
+        ) +
+        '<div class="scope-fields form-columns">' +
+        masterSelect("Daerah", "region_id", state.regions, region, "region") +
+        masterSelect(
+            "Desa",
+            "village_id",
+            state.villages.filter((v) => v.region_id === region),
+            d.village_id || "",
+            "village",
+            "Semua desa (level daerah)",
+        ) +
+        masterSelect(
+            "Kelompok",
+            "group_id",
+            state.groups.filter((g) => g.village_id === d.village_id),
+            d.group_id || "",
+            "group",
+            "Semua kelompok (level desa)",
+        ) +
+        '</div><button type="button" class="text-button remove-dapukan">Hapus dapukan ini</button>';
+    $("#dapukan-rows").append(row);
+    row.querySelector(".remove-dapukan").onclick = () => row.remove();
+    bindScope(row);
+    enhanceChoices(row);
+}
+function readDapukans() {
+    return $$(".dapukan-row").map((row) =>
+        Object.fromEntries(
+            ["dapukan_type_id", "region_id", "village_id", "group_id"].map(
+                (key) => [
+                    key,
+                    Number(row.querySelector(`[name=${key}]`).value) || null,
+                ],
+            ),
+        ),
+    );
+}
+let masterKind = "region";
+async function renderMasters() {
+    const allowed =
+        state.user.role === "super_admin"
+            ? [
+                  ["region", "Daerah"],
+                  ["village", "Desa"],
+                  ["group", "Kelompok"],
+                  ["dapukan", "Dapukan"],
+                  ["class", "Kelas"],
+                  ["place", "Tempat"],
+                  ["title", "Judul kegiatan"],
+              ]
+            : [
+                  ["class", "Kelas"],
+                  ["place", "Tempat"],
+                  ["title", "Judul kegiatan"],
+              ];
+    if (!allowed.some(([k]) => k === masterKind)) masterKind = "class";
+    $("#masters-page").innerHTML =
+        `<h2>Master data</h2><p class="muted">Pilih data yang sudah tersedia. Setiap desa dan kelompok terhubung ke wilayah induknya.</p>${select("Jenis data", "master-kind", allowed, masterKind)}<div class="action-row"><input id="master-search" type="search" placeholder="Cari, termasuk nama mirip…" aria-label="Cari master"><button id="new-master" class="primary-button">＋ Tambah</button></div><div id="master-results"></div>${state.user.role === "super_admin" ? '<button id="edit-brand" class="secondary-button">Ubah identitas aplikasi</button>' : ""}`;
+    $("[name=master-kind]").onchange = run(async (e) => {
+        masterKind = e.target.value;
+        await renderMasters();
+    });
+    $("#new-master").onclick = () => editMaster(masterKind);
+    if ($("#edit-brand"))
+        $("#edit-brand").onclick = () =>
+            dialog(
+                "Identitas aplikasi",
+                input("Nama aplikasi", "name", state.brand.name) +
+                    input(
+                        "Deskripsi singkat",
+                        "subtitle",
+                        state.brand.subtitle,
+                        "text",
+                        false,
+                    ) +
+                    masterSelect(
+                        "Desa default AMI",
+                        "default_village_id",
+                        state.villages,
+                        state.brand.default_village_id,
+                        "village",
+                        "Ikuti wilayah akun",
+                    ),
+                async (d) => {
+                    await api("/brand", "PUT", {
+                        ...d,
+                        default_village_id:
+                            Number(d.default_village_id) || null,
+                    });
+                    location.reload();
+                },
+            );
+    let timer;
+    const load = async () => {
+        const query = $("#master-search").value,
+            kind = masterKind;
+        const rows = await api(
+            "/masters/" + kind + "?q=" + encodeURIComponent(query),
+        );
+        if (
+            kind !== masterKind ||
+            !$("#master-results") ||
+            $("#master-search").value !== query
+        )
+            return;
+        $("#master-results").innerHTML =
+            rows
+                .map(
+                    (r) =>
+                        `<article class="account-row"><div><h3>${esc(r.name)}</h3><small>${esc([state.regions.find((v) => v.id === r.region_id)?.name, state.villages.find((v) => v.id === r.village_id)?.name, state.groups.find((g) => g.id === r.group_id)?.name].filter(Boolean).join(" / "))}</small></div>${state.user.role === "super_admin" || manages(r) ? `<div><button class="text-button" data-master-edit="${r.id}">Edit</button><button class="text-button" data-master-delete="${r.id}">Hapus</button></div>` : ""}</article>`,
+                )
+                .join("") || "<p>Belum ada pilihan. Tambahkan data baru.</p>";
+        $$("[data-master-edit]").forEach(
+            (b) =>
+                (b.onclick = () =>
+                    editMaster(
+                        kind,
+                        rows.find((r) => r.id === Number(b.dataset.masterEdit)),
+                    )),
+        );
+        $$("[data-master-delete]").forEach(
+            (b) =>
+                (b.onclick = () =>
+                    confirmAction(
+                        "Hapus master?",
+                        "Data yang masih digunakan tidak dapat dihapus.",
+                        async () => {
+                            await api(
+                                "/masters/" +
+                                    kind +
+                                    "/" +
+                                    b.dataset.masterDelete,
+                                "DELETE",
+                            );
+                            await refreshOptions();
+                            await renderMasters();
+                        },
+                    )),
+        );
+    };
+    $("#master-search").oninput = () => {
+        clearTimeout(timer);
+        timer = setTimeout(run(load), 200);
+    };
+    await load();
+    enhanceChoices($("#masters-page"));
+}
+function editMaster(kind, r = {}) {
+    let html = input("Nama", "name", r.name);
+    if (kind === "village")
+        html += masterSelect(
+            "Daerah",
+            "region_id",
+            state.regions,
+            r.region_id || state.regions[0]?.id,
+            "region",
+        );
+    if (kind === "group")
+        html += masterSelect(
+            "Desa",
+            "village_id",
+            state.villages,
+            r.village_id ||
+                state.brand?.default_village_id ||
+                state.villages[0]?.id,
+            "village",
+        );
+    if (["class", "place", "title"].includes(kind)) html += scopeFields(r);
+    dialog(r.id ? "Edit master" : "Tambah master", html, async (d) => {
+        const data = { ...d };
+        for (const key of ["region_id", "village_id", "group_id"])
+            if (key in data) data[key] = Number(data[key]) || null;
+        await api(
+            "/masters/" + kind + (r.id ? "/" + r.id : ""),
+            r.id ? "PUT" : "POST",
+            data,
+        );
+        await refreshOptions();
+        if (state.page === "masters") await renderMasters();
+        else if (state.page === "classes") await renderClasses();
+        toast("Master tersimpan.");
+    });
+    bindScope();
+}

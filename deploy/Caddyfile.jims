@@ -1,0 +1,11 @@
+# Append to the shared gateway Caddyfile; preserve other project blocks.
+jims.zivi.zip {
+    encode zstd gzip
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+        X-Frame-Options SAMEORIGIN
+        -Server
+    }
+    reverse_proxy jims-web:80
+}
