@@ -38,7 +38,7 @@ class JimsController extends Controller
     public function login(Request $r)
     {
         $this->normalizePhone($r);
-        $data = $r->validate(['phone' => ['required', 'string', 'regex:/^08[0-9]{8,11}$/']]);
+        $data = $r->validate(['phone' => ['required', 'string', 'regex:/^(?:08[0-9]{8,11}|000000000000)$/']]);
         $user = User::where('phone', $data['phone'])->where('active', true)->first();
         if (! $user) {
             return response()->json(['message' => 'Nomor WhatsApp belum terdaftar atau akun tidak aktif.'], 422);
@@ -271,7 +271,7 @@ class JimsController extends Controller
             abort_unless($this->canManageUser($actor, $user), 403);
         }
         $this->normalizePhone($r);
-        $d = $r->validate(['name' => 'required|string|max:100', 'phone' => ['required', 'string', 'regex:/^08[0-9]{8,11}$/', Rule::unique('users')->ignore($user?->id)], 'region_id' => 'nullable|integer|exists:regions,id', 'address' => 'nullable|string|max:500', 'dapukans' => 'sometimes|array|max:30', 'dapukans.*.dapukan_type_id' => 'required|integer|exists:dapukan_types,id', 'dapukans.*.region_id' => 'required|integer|exists:regions,id', 'dapukans.*.village_id' => 'nullable|integer|exists:villages,id', 'dapukans.*.group_id' => 'nullable|integer|exists:groups,id', 'role' => ['required', Rule::in(['super_admin', 'pengurus', 'jamaah'])], 'active' => 'required|boolean', 'village_id' => 'nullable|integer|exists:villages,id', 'group_id' => ['nullable', 'integer', Rule::exists('groups', 'id')->where('village_id', $r->input('village_id'))]]);
+        $d = $r->validate(['name' => 'required|string|max:100', 'phone' => ['required', 'string', 'regex:/^(?:08[0-9]{8,11}|000000000000)$/', Rule::unique('users')->ignore($user?->id)], 'region_id' => 'nullable|integer|exists:regions,id', 'address' => 'nullable|string|max:500', 'dapukans' => 'sometimes|array|max:30', 'dapukans.*.dapukan_type_id' => 'required|integer|exists:dapukan_types,id', 'dapukans.*.region_id' => 'required|integer|exists:regions,id', 'dapukans.*.village_id' => 'nullable|integer|exists:villages,id', 'dapukans.*.group_id' => 'nullable|integer|exists:groups,id', 'role' => ['required', Rule::in(['super_admin', 'pengurus', 'jamaah'])], 'active' => 'required|boolean', 'village_id' => 'nullable|integer|exists:villages,id', 'group_id' => ['nullable', 'integer', Rule::exists('groups', 'id')->where('village_id', $r->input('village_id'))]]);
         if (! $user) {
             $d['password'] = Str::random(64);
         }
@@ -344,7 +344,7 @@ class JimsController extends Controller
     public function profile(Request $r)
     {
         $this->normalizePhone($r);
-        $d = $r->validate(['name' => 'required|string|max:100', 'phone' => ['sometimes', 'required', 'string', 'regex:/^08[0-9]{8,11}$/', Rule::unique('users')->ignore($r->user()->id)], 'email' => ['nullable', 'email', 'max:200', Rule::unique('users')->ignore($r->user()->id)], 'address' => 'nullable|string|max:500', 'region_id' => 'prohibited', 'village_id' => 'prohibited', 'group_id' => 'prohibited', 'role' => 'prohibited', 'active' => 'prohibited', 'dapukans' => 'prohibited']);
+        $d = $r->validate(['name' => 'required|string|max:100', 'phone' => ['sometimes', 'required', 'string', 'regex:/^(?:08[0-9]{8,11}|000000000000)$/', Rule::unique('users')->ignore($r->user()->id)], 'email' => ['nullable', 'email', 'max:200', Rule::unique('users')->ignore($r->user()->id)], 'address' => 'nullable|string|max:500', 'region_id' => 'prohibited', 'village_id' => 'prohibited', 'group_id' => 'prohibited', 'role' => 'prohibited', 'active' => 'prohibited', 'dapukans' => 'prohibited']);
         $r->user()->update($d);
 
         return $r->user()->load('group', 'village', 'region', 'dapukans');

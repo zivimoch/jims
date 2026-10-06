@@ -13,4 +13,4 @@ Dummy data is optional and must be explicitly chosen. The seeder refuses product
 
 Backups: protect both `pg_dump` of the JiMS database and `app-storage` (VAPID private key). Copy backups off the VPS separately. Before upgrading, back up; record image tags, run migrations, recreate services, and restart JiMS web if the app/reverb container IP changes. Restore previous images for code rollback only when their schema is compatible. Never run `down -v` as an update procedure.
 
-The current phone-only login has no ownership verification. It is intended for the requested demo phase; public availability does not make it safe for real private jamaah data. Add OTP or another verified authentication step before that use.
+The current phone-only login has no ownership verification. This deployment deliberately uses phone-only access as requested by the operator. Anyone who knows a registered number can access that account, including administrative accounts; this mode does not verify ownership.

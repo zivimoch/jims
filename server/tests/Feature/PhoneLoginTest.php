@@ -20,6 +20,13 @@ class PhoneLoginTest extends TestCase
         $this->assertAuthenticatedAs($user);
     }
 
+    public function test_special_admin_number_can_login_but_other_zero_numbers_cannot(): void
+    {
+        $admin = User::factory()->create(['phone' => '000000000000', 'role' => 'super_admin', 'active' => true]);
+        $this->postJson('/api/login', ['phone' => '00000000000'])->assertUnprocessable();
+        $this->postJson('/api/login', ['phone' => '000000000000'])->assertOk()->assertJsonPath('user.id', $admin->id);
+    }
+
     public function test_international_prefix_and_unknown_or_inactive_numbers_are_rejected(): void
     {
         User::factory()->create(['phone' => '081234567890', 'active' => false]);

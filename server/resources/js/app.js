@@ -305,7 +305,7 @@ document.addEventListener("input", (event) => {
         field.value = field.value.replace(/[\s-]/g, "");
         field.setSelectionRange(before.length, before.length);
         field.setCustomValidity(
-            field.value && !/^08[0-9]{8,11}$/.test(field.value)
+            field.value && !/^(?:08[0-9]{8,11}|000000000000)$/.test(field.value)
                 ? "Gunakan nomor WA berawalan 08, sepanjang 10–13 digit (bukan 62)."
                 : "",
         );
