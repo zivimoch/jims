@@ -187,6 +187,23 @@ function dialog(title, html, onSubmit, submitLabel = "Simpan") {
     dialogSubmit = onSubmit;
     $("#dialog").showModal();
     enhanceChoices($("#dialog-fields"));
+    const reason = $("#absence-reason");
+    if (reason) {
+        const updateReason = () => {
+            const needed = $('#dialog-fields [name="status"]').value !== "offline";
+            reason.closest("label").hidden = !needed;
+            reason.disabled = !needed;
+            reason.required = needed;
+            const other = needed && reason.value === "Lainnya";
+            $("#custom-reason-label").hidden = !other;
+            $("#custom-reason").disabled = !other;
+            $("#custom-reason").required = other;
+            if (other) $("#custom-reason").focus();
+        };
+        reason.onchange = updateReason;
+        $('#dialog-fields [name="status"]').onchange = updateReason;
+        updateReason();
+    }
 }
 $("#dialog-form").onsubmit = async (e) => {
     e.preventDefault();
@@ -415,7 +432,7 @@ function renderPeople() {
                             .slice(0, 2)
                             .map((s) => s[0])
                             .join(""),
-                    )}</span><div class="person-name"><strong>${esc(p.user.name)}${p.user_id === state.user.id ? " (Anda)" : ""}</strong><small>${esc(clock(p.updated_at))} WIB</small>${p.reason ? `<small>Alasan: ${esc(p.reason)}</small>` : ""}</div><span class="status ${p.status}">${icon(p.status === "offline" ? "check" : p.status === "online" ? "screen" : "clock")}<span class="sr-only">${esc(statusLabels[p.status])}</span></span></li>`,
+                    )}</span><div class="person-name"><strong>${esc(p.user.name)}${p.user_id === state.user.id ? " (Anda)" : ""}</strong>${p.reason ? `<small class="reason-note">${esc(p.reason)}</small>` : ""}</div><time>${esc(clock(p.updated_at))} WIB</time><span class="status ${p.status}" title="${esc(statusLabels[p.status])}" aria-label="${esc(statusLabels[p.status])}">${icon(p.status === "offline" ? "check" : p.status === "online" ? "screen" : "clock")}<span class="sr-only">${esc(statusLabels[p.status])}</span></span></li>`,
             )
             .join("") || '<li class="empty">Belum ada jamaah yang cocok.</li>';
 }
@@ -491,6 +508,9 @@ async function attend(status, reason = null, user_id) {
         attendanceBusy = false;
     }
 }
+function attendanceReasonFields() {
+    return '<label>Alasan<select id="absence-reason" name="reason" required><option value="">Pilih alasan</option><option>Bekerja</option><option>Sekolah</option><option>Sakit</option><option>Lainnya</option></select></label><label id="custom-reason-label" hidden>Alasan lainnya<input id="custom-reason" name="customReason" maxlength="200" placeholder="Tulis alasan Anda..." disabled></label>';
+}
 function choose(direction) {
     if (!selected()) return;
     if (state.own) {
@@ -509,8 +529,12 @@ function choose(direction) {
                     ["izin", "Izin"],
                 ],
                 "online",
-            ) + input("Alasan", "reason"),
-            (d) => attend(d.status, d.reason),
+            ) + attendanceReasonFields(),
+            (d) => {
+                const reason = (d.reason === "Lainnya" ? d.customReason : d.reason)?.trim();
+                if (!reason) throw new Error("Mohon isi alasan Anda.");
+                return attend(d.status, reason);
+            },
         );
 }
 $$("[data-attend]").forEach(
@@ -526,34 +550,52 @@ $("#filter-button").onclick = () => {
     );
 };
 $("#other-attendance").onclick = run(async () => {
-    const users = (await api("/users")).data.filter(
-        (u) =>
-            u.active &&
-            (!selected().group_id || u.group_id === selected().group_id),
+    const activity = selected();
+    if (!activity) return;
+    let page = 1, result, accounts = [];
+    do {
+        result = await api(`/users?page=${page++}`);
+        accounts.push(...result.data);
+    } while (result.current_page < result.last_page);
+    const users = accounts.filter((u) =>
+        u.active && u.id !== state.user.id && u.village_id === activity.village_id &&
+        (!activity.group_id || u.group_id === activity.group_id),
     );
     dialog(
         "Absenkan jamaah lain",
-        select(
-            "Jamaah",
-            "user_id",
-            users.map((u) => [u.id, u.name]),
-            users[0]?.id,
-        ) +
-            select(
-                "Status",
-                "status",
-                Object.entries(statusLabels),
-                "offline",
-            ) +
-            input(
-                "Alasan (wajib untuk online/izin)",
-                "reason",
-                "",
-                "text",
-                false,
-            ),
-        (d) => attend(d.status, d.reason || null, Number(d.user_id)),
+        '<label class="dialog-search">Cari jamaah<input id="other-search" type="search" placeholder="Cari nama jamaah..."></label><div class="select-people" id="other-people">' +
+        users.map((u) => `<label class="select-person" data-person-name="${esc(u.name.toLocaleLowerCase("id"))}"><input type="checkbox" name="otherPeople" value="${u.id}"><span class="avatar mint">${esc(u.name.split(/\s+/).slice(0, 2).map((n) => n[0]).join(""))}</span><span><strong>${esc(u.name)}</strong><small>${esc(u.group?.name || u.village?.name || "")}</small></span></label>`).join("") +
+        '</div><p id="other-empty" class="empty" hidden>Tidak ada jamaah yang cocok.</p>' +
+        select("Status absensi", "status", Object.entries(statusLabels), "offline") + attendanceReasonFields(),
+        async (d, form) => {
+            const boxes = [...form.querySelectorAll('[name="otherPeople"]:checked')];
+            if (!boxes.length) throw new Error("Pilih minimal satu jamaah.");
+            const reason = d.status === "offline" ? null : (d.reason === "Lainnya" ? d.customReason : d.reason)?.trim();
+            if (d.status !== "offline" && !reason) throw new Error("Mohon isi alasan Anda.");
+            let saved = 0;
+            try {
+                for (const box of boxes) {
+                    await api(`/activities/${activity.id}/attendance`, "POST", {status: d.status, reason, user_id: Number(box.value)});
+                    box.checked = false;
+                    saved++;
+                }
+            } catch (error) {
+                throw new Error(`${saved} jamaah berhasil disimpan. ${error.message} Pilihan yang belum berhasil tetap dicentang.`);
+            } finally {
+                if (saved) await loadAttendance();
+            }
+            toast(`Absensi ${saved} jamaah berhasil disimpan.`);
+        },
     );
+    const search = $("#other-search");
+    const filter = () => {
+        const query = search.value.trim().toLocaleLowerCase("id");
+        const rows = $$("#other-people .select-person");
+        rows.forEach((row) => row.hidden = !row.dataset.personName.includes(query));
+        $("#other-empty").hidden = rows.some((row) => !row.hidden);
+    };
+    search.oninput = filter;
+    filter();
 });
 function slideLimit() {
     return Math.max(
@@ -1510,7 +1552,7 @@ function fuzzyScore(a, b) {
 }
 function enhanceChoices(root) {
     root?.querySelectorAll(
-        'select:not([data-enhanced]):not(#ami-size):not([name="status"])',
+        'select:not([data-enhanced]):not(#ami-size):not([name="status"]):not(#absence-reason)',
     ).forEach((el) => {
         const label =
             el.closest("label")?.firstChild?.textContent?.trim() ||
