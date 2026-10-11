@@ -337,8 +337,11 @@ async function reloadActivities() {
     state.activities = response.data;
     state.activeActivities = active.data;
     state.activityPagination = response;
-    if (state.selected && !selected()) {
-        state.selected = null;
+    const available = state.activeActivities.filter(
+        (a) => activityStatus(a) === "Sedang berlangsung",
+    );
+    if (!available.some((a) => a.id === state.selected)) {
+        state.selected = available[0]?.id ?? null;
         state.own = null;
         state.people = [];
     }
@@ -412,7 +415,7 @@ function renderPeople() {
                             .slice(0, 2)
                             .map((s) => s[0])
                             .join(""),
-                    )}</span><div class="person-name"><strong>${esc(p.user.name)}${p.user_id === state.user.id ? " (Anda)" : ""}</strong><small>${esc(clock(p.updated_at))} WIB</small></div><span class="status ${p.status}">${icon(p.status === "offline" ? "check" : p.status === "online" ? "screen" : "clock")}<span class="sr-only">${esc(statusLabels[p.status])}</span></span></li>`,
+                    )}</span><div class="person-name"><strong>${esc(p.user.name)}${p.user_id === state.user.id ? " (Anda)" : ""}</strong><small>${esc(clock(p.updated_at))} WIB</small>${p.reason ? `<small>Alasan: ${esc(p.reason)}</small>` : ""}</div><span class="status ${p.status}">${icon(p.status === "offline" ? "check" : p.status === "online" ? "screen" : "clock")}<span class="sr-only">${esc(statusLabels[p.status])}</span></span></li>`,
             )
             .join("") || '<li class="empty">Belum ada jamaah yang cocok.</li>';
 }
@@ -1507,7 +1510,7 @@ function fuzzyScore(a, b) {
 }
 function enhanceChoices(root) {
     root?.querySelectorAll(
-        "select:not([data-enhanced]):not(#ami-size)",
+        'select:not([data-enhanced]):not(#ami-size):not([name="status"])',
     ).forEach((el) => {
         const label =
             el.closest("label")?.firstChild?.textContent?.trim() ||

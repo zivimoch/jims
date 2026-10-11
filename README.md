@@ -96,7 +96,7 @@ Pemeriksaan dilakukan pada **server**, termasuk kanal WebSocket privat; menyembu
 ## Fitur
 
 - AMI: tabel ringkas sesuai prototype, tanpa checkbox. Klik/tap dua kali atau Enter pada baris untuk edit/hapus bagi pengurus yang berwenang. Mendukung jumlah baris, urutan tanggal, pencarian, filter, Copy, PDF/Cetak, berbagi halaman ke WhatsApp, dan mode baca. Kegiatan memuat kelas wajib hadir, tempat, materi multi-pilih, jam WIB, NB, dan link HTTPS Zoom.
-- Absen: pilih kegiatan/lokasi secara eksplisit, hadir offline, online atau izin beserta alasan, batalkan absensi selama jendela waktu berlangsung. Tombol sidik jari adalah kontrol tap/geser, bukan pembaca biometrik.
+- Absen: kegiatan pertama yang sedang berlangsung dipilih otomatis; pengguna tetap bisa mengganti kegiatan/lokasi. Modal izin/online berisi Status dan Alasan tanpa kolom pencarian. Alasan tampil pada daftar yang sudah absen. Hadir offline, online atau izin beserta alasan, batalkan absensi selama jendela waktu berlangsung. Tombol sidik jari adalah kontrol tap/geser, bukan pembaca biometrik.
 - Absensi dibuka dua jam sebelum mulai hingga dua jam sesudah selesai. Kunci unik database mencegah duplikasi; identitas pencatat terpisah dari identitas jamaah.
 - Riwayat dan ketercapaian materi dari absensi offline/online. Catatan shodakoh kategori Kas dan Tabungan Jalan-jalan; tidak memverifikasi transfer. Rekening/QRIS contoh diberi label dummy.
 - Realtime: perubahan data memicu pesan ringan melalui kanal privat Reverb, lalu klien memuat ulang data yang diizinkan. Queue worker mengirim broadcast dan push tanpa menahan respons pencatatan.
@@ -130,9 +130,9 @@ docker compose down
 docker compose up -d
 ```
 
-**`docker compose down -v` menghapus volume database dan storage aplikasi.** Jangan gunakan untuk restart biasa. Compose ini untuk development/preview lokal. Belum dideploy ke VPS, Kubernetes, atau `jims.zivi.zip`.
+**`docker compose down -v` menghapus volume database dan storage aplikasi.** Jangan gunakan untuk restart biasa. Compose di root ini untuk development/preview lokal. Instalasi VPS menggunakan Compose terpisah di `deploy/compose.yaml`. JiMS tersedia di **https://jims.zivi.zip** melalui HTTPS; deployment awal diverifikasi pada 6 Oktober 2026.
 
-Untuk HTTPS reverse proxy nantinya: atur `APP_ENV=production`, `APP_DEBUG=false`, `APP_URL`, `SESSION_SECURE_COOKIE=true`, `REVERB_ALLOWED_ORIGINS` ke hostname yang digunakan, dan konfigurasi trusted proxy secara terbatas. Siapkan akun sungguhan dan hapus/nonaktifkan data contoh. Jangan seed dummy di production. Domain, TLS, backup, dan pemulihan harus diuji saat deployment.
+Untuk instalasi HTTPS reverse proxy lainnya: atur `APP_ENV=production`, `APP_DEBUG=false`, `APP_URL`, `SESSION_SECURE_COOKIE=true`, `REVERB_ALLOWED_ORIGINS` ke hostname yang digunakan, dan konfigurasi trusted proxy secara terbatas. Siapkan akun sungguhan dan hapus/nonaktifkan data contoh. Jangan seed dummy di production. Domain, TLS, backup, dan pemulihan harus diuji saat deployment.
 
 ## Pengujian
 
@@ -168,4 +168,4 @@ Referensi implementasi: [Laravel Reverb](https://laravel.com/docs/13.x/reverb), 
 
 ## Deploy ke VPS bersama
 
-Konfigurasi Compose terpisah dan panduan Caddy ada di [deploy/README.md](deploy/README.md). Target JiMS adalah `jims.zivi.zip`; DNS A bernama `jims` mengarah ke VPS. Status online harus diverifikasi setelah DNS dan HTTPS siap.
+Konfigurasi Compose terpisah dan panduan Caddy ada di [deploy/README.md](deploy/README.md). Target JiMS adalah `jims.zivi.zip`; DNS A bernama `jims` mengarah ke VPS. HTTPS, redirect HTTP, login, cookie remember-me Secure, halaman AMI, koneksi realtime, manifest PWA, dan kesehatan container telah diverifikasi pada deployment awal. Pengiriman notifikasi OS dan pemulihan backup penuh belum diuji. Data akun production tidak disimpan dalam repository.
