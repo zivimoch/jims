@@ -267,3 +267,6 @@
 .select-person .avatar{width:34px;height:34px;font-size:14px}
 .select-person span:last-child{display:grid;gap:2px}
 .select-person small{color:var(--muted)}
+
+.account{position:relative}.account-popover{position:absolute;bottom:65px;left:0;right:0;padding:8px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 24px #172b3a22;z-index:20}.account-popover button{display:block;width:100%;padding:11px 14px;border:0;border-radius:8px;background:none;text-align:left}.account-popover button:hover{background:#e7fff6}.download-app{position:absolute;right:4px;top:12px;z-index:2}.page-header h1{padding-right:125px}#classes-page{background:none;border:0;box-shadow:none;padding:0}#settings-page>p{margin:16px 0}#attendance-feedback:empty{display:none}
+@media(max-width:700px){.download-app{top:16px;right:0;font-size:13px;padding:8px 10px}.mobile-header{padding-right:105px}}

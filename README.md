@@ -98,18 +98,18 @@ Pemeriksaan dilakukan pada **server**, termasuk kanal WebSocket privat; menyembu
 - AMI: tabel ringkas sesuai prototype, tanpa checkbox. Klik/tap dua kali atau Enter pada baris untuk edit/hapus bagi pengurus yang berwenang. Mendukung jumlah baris, urutan tanggal, pencarian, filter, Copy, PDF/Cetak, berbagi halaman ke WhatsApp, dan mode baca. Kegiatan memuat kelas wajib hadir, tempat, materi multi-pilih, jam WIB, NB, dan link HTTPS Zoom.
 - Absen: kegiatan pertama yang sedang berlangsung dipilih otomatis; pengguna tetap bisa mengganti kegiatan/lokasi. Modal izin/online berisi Status dan pilihan alasan Bekerja, Sekolah, Sakit, atau Lainnya; isian bebas hanya muncul untuk Lainnya. Alasan tampil di bawah nama pada daftar yang sudah absen, dengan jam dan ikon status di kanan. Form absenkan jamaah lain memakai pencarian nama dan daftar centang untuk beberapa jamaah sekaligus. Hadir offline, online atau izin beserta alasan, batalkan absensi selama jendela waktu berlangsung. Tombol sidik jari adalah kontrol tap/geser, bukan pembaca biometrik.
 - Absensi dibuka dua jam sebelum mulai hingga dua jam sesudah selesai. Kunci unik database mencegah duplikasi; identitas pencatat terpisah dari identitas jamaah.
-- Riwayat dan ketercapaian materi dari absensi offline/online. Catatan shodakoh kategori Kas dan Tabungan Jalan-jalan; tidak memverifikasi transfer. Rekening/QRIS contoh diberi label dummy.
+- Riwayat absensi offline/online; halaman Kelas sementara dikosongkan. Catatan shodakoh kategori Kas dan Tabungan Jalan-jalan; tidak memverifikasi transfer. Rekening/QRIS contoh diberi label dummy.
 - Realtime: perubahan data memicu pesan ringan melalui kanal privat Reverb, lalu klien memuat ulang data yang diizinkan. Queue worker mengirim broadcast dan push tanpa menahan respons pencatatan.
 - PWA: manifest, ikon 192/512, service worker, tombol pemasangan, halaman offline, dan Web Push berbasis VAPID. API dan HTML berisi sesi **tidak di-cache**. Perubahan/absensi membutuhkan internet; tidak ada antrean offline yang diam-diam dianggap tersimpan.
 - Responsif: sidebar desktop, navigasi bawah dan menu pada mobile. CSS/aset lokal tanpa font atau UI CDN, bundling Vite, gzip, PHP OPcache, indeks PostgreSQL dan pagination.
 
 ## PWA dan notifikasi
 
-1. Buka aplikasi pada browser yang mendukung PWA; pilih **Pasang aplikasi**, atau menu browser → **Tambahkan ke layar utama**.
-2. Buka **Notifikasi → Aktifkan notifikasi**, lalu izinkan pada perangkat.
-3. Pilih **Kirim uji** untuk memasukkan notifikasi uji ke antrean.
+1. Buka aplikasi pada browser yang mendukung PWA; pilih **Download** di kanan atas, atau menu browser → **Tambahkan ke layar utama**.
+2. Klik nama/avatar → **Settings → Aktifkan notifikasi**, lalu izinkan pada perangkat.
+3. Pengingat smartphone dijadwalkan 2 jam sebelum kegiatan (scheduler berjalan setiap menit). Tidak ada halaman notifikasi tersendiri atau push saat agenda dibuat/diedit. Jadwal yang melewati jendela pengingat ketika server mati tidak dikirim terlambat.
 
-HTTPS diperlukan pada domain publik (loopback localhost/127.0.0.1 diperbolehkan untuk development). Pada iPhone gunakan aplikasi yang telah ditambahkan ke layar utama. Dukungan instalasi dan pengiriman push bergantung pada browser/OS dan izin pengguna. Reverb harus tetap hidup untuk realtime; queue worker untuk broadcast dan push. Kunci VAPID disimpan di `app-storage:/var/www/html/storage/app/vapid.json`; cadangkan bersama database dan jangan ganti sembarangan setelah pengguna berlangganan.
+HTTPS diperlukan pada domain publik (loopback localhost/127.0.0.1 diperbolehkan untuk development). Pada iPhone gunakan aplikasi yang telah ditambahkan ke layar utama. Dukungan instalasi dan pengiriman push bergantung pada browser/OS dan izin pengguna. Reverb harus tetap hidup untuk realtime; queue worker untuk broadcast dan push, serta service `scheduler` untuk pengingat. Kunci VAPID disimpan di `app-storage:/var/www/html/storage/app/vapid.json`; cadangkan bersama database dan jangan ganti sembarangan setelah pengguna berlangganan.
 
 ## Perintah sehari-hari
 
@@ -145,7 +145,7 @@ docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/server:/var/www/html" jims-p
 ./scripts/test.sh
 ```
 
-Runner menolak koneksi selain `jims_testing` sebelum migrasi pengujian. Data dummy pada database `jims` tetap dipertahankan. Cakupan mencakup multi-dapukan, isolasi daerah/desa/kelompok, master dan pencarian toleran salah ketik, profil yang mengunci wilayah, branding/PWA, kelas wajib hadir, penutupan absensi, anti-escalation, jendela absensi, duplikasi, kerahasiaan alasan, kanal privat, dan endpoint push.
+Runner menolak koneksi selain `jims_testing` sebelum migrasi pengujian. Data dummy pada database `jims` tetap dipertahankan. Cakupan mencakup multi-dapukan, isolasi daerah/desa/kelompok, master dan pencarian toleran salah ketik, profil yang mengunci wilayah, branding/PWA, kelas wajib hadir, penutupan absensi, anti-escalation, jendela absensi, duplikasi, visibilitas alasan dalam lingkup kegiatan, kanal privat, dan endpoint push.
 
 ## Struktur
 
@@ -161,7 +161,7 @@ Referensi implementasi: [Laravel Reverb](https://laravel.com/docs/13.x/reverb), 
 - Tes backend dijalankan dengan PostgreSQL terpisah; mencakup login WA, pemulihan sesi, hierarki daerah, multi-dapukan, profil, master, dan AMI.
 - Formulir dua dapukan pada tingkat berbeda, pencarian `Caberwit` → `Caberawit`, dan penyimpanan AMI dengan dua kelas wajib hadir sudah diperiksa di browser.
 - Login jamaah, absensi tersimpan, kontrol AMI baca-saja untuk jamaah, dan layout 390 piksel diperiksa melalui browser.
-- Agenda baru dari sesi admin terpisah muncul pada sesi jamaah lewat WebSocket tanpa reload manual; notifikasi dalam aplikasi juga tersimpan.
+- Agenda baru dari sesi admin terpisah muncul pada sesi jamaah lewat WebSocket tanpa reload manual; perubahan ini kini tidak lagi menghasilkan notifikasi dalam aplikasi.
 - Request login tanpa CSRF token ditolak HTTP 419.
 - Sampel 10 request API agenda pada Docker lokal: median sekitar **86 ms**, maksimum **111 ms**. Ini pengukuran lokal dengan data dummy, bukan jaminan kecepatan pada VPS atau beban banyak pengguna.
 - Web Push sudah terimplementasi; browser pengujian tidak memberikan izin notifikasi. Pengiriman notifikasi OS ketika aplikasi ditutup masih perlu verifikasi pada perangkat/browser yang mengizinkannya, termasuk Android/iPhone dan HTTPS publik.
@@ -169,3 +169,5 @@ Referensi implementasi: [Laravel Reverb](https://laravel.com/docs/13.x/reverb), 
 ## Deploy ke VPS bersama
 
 Konfigurasi Compose terpisah dan panduan Caddy ada di [deploy/README.md](deploy/README.md). Target JiMS adalah `jims.zivi.zip`; DNS A bernama `jims` mengarah ke VPS. HTTPS, redirect HTTP, login, cookie remember-me Secure, halaman AMI, koneksi realtime, manifest PWA, dan kesehatan container telah diverifikasi pada deployment awal. Pengiriman notifikasi OS dan pemulihan backup penuh belum diuji. Data akun production tidak disimpan dalam repository.
+
+Menu nama/avatar memuat Profil saya, Settings, dan Keluar. Alasan absensi terlihat oleh semua pengguna yang berhak melihat kegiatan tersebut. Teks status hanya muncul pada kontrol absensi; pembatalan tetap melalui kontrol geser. Tombol Download disembunyikan pada mode aplikasi terpasang atau setelah browser mengonfirmasi pemasangan. Browser tidak selalu dapat mendeteksi pemasangan dari browser/perangkat lain.

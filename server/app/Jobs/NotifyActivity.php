@@ -2,12 +2,12 @@
 
 namespace App\Jobs;
 
-use App\Events\DataChanged;
 use App\Models\Activity;
-use App\Models\Notice;
+use App\Models\PushSubscription;
 use App\Models\User;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\DB;
 
 class NotifyActivity implements ShouldQueue
 {
@@ -17,19 +17,19 @@ class NotifyActivity implements ShouldQueue
 
     public function handle(): void
     {
-        $a = Activity::find($this->activityId);
-        if (! $a) {
-            return;
-        }
-        User::where('active', true)->with('dapukans')->chunkById(100, function ($users) use ($a) {
-            foreach ($users as $u) {
-                if (! $u->canSee($a)) {
-                    continue;
-                }
-                Notice::create(['user_id' => $u->id, 'title' => 'Pembaruan kegiatan', 'body' => $a->title.' · '.$a->starts_at->format('d/m/Y H:i')]);
-                DataChanged::dispatch($a->village_id, $a->group_id, $u->id);
-                SendPush::dispatch($u->id, 'Pembaruan kegiatan JiMS', 'Buka JiMS untuk melihat agenda terbaru.');
+        DB::transaction(function () {
+            $a = Activity::lockForUpdate()->find($this->activityId);
+            if (! $a || $a->starts_at->gt(now()->addHours(2)) || $a->starts_at->lte(now()->addHours(2)->subMinute()) || ($a->reminder_sent_for && $a->starts_at->equalTo($a->reminder_sent_for))) {
+                return;
             }
+            User::where('active', true)->whereIn('id', PushSubscription::select('user_id'))->with('dapukans')->chunkById(100, function ($users) use ($a) {
+                foreach ($users as $u) {
+                    if ($u->canSee($a)) {
+                        SendPush::dispatch($u->id, 'Pengingat pengajian', $a->title.' dimulai 2 jam lagi · '.$a->starts_at->timezone('Asia/Jakarta')->format('H:i').' WIB · '.$a->location)->afterCommit();
+                    }
+                }
+            });
+            $a->update(['reminder_sent_for' => $a->starts_at]);
         });
     }
 }

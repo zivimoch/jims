@@ -4,11 +4,13 @@ namespace Tests\Feature;
 
 use App\Events\DataChanged;
 use App\Jobs\NotifyActivity;
+use App\Jobs\SendPush;
 use App\Models\Activity;
 use App\Models\Attendance;
 use App\Models\Contribution;
 use App\Models\Group;
 use App\Models\Notice;
+use App\Models\PushSubscription;
 use App\Models\User;
 use App\Models\Village;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -102,7 +104,7 @@ class AccessControlTest extends TestCase
         $this->actingAs($this->desa)->putJson('/api/activities/'.$this->activity->id, $this->activityData())->assertOk();
         $this->putJson('/api/users/'.$this->group1->id, $this->userData($this->group1))->assertOk();
         $this->actingAs($this->admin)->putJson('/api/users/'.$this->desa->id, $this->userData($this->desa))->assertOk();
-        Queue::assertPushed(NotifyActivity::class);
+        Queue::assertNotPushed(NotifyActivity::class);
     }
 
     public function test_desa_cannot_manage_other_village(): void
@@ -159,11 +161,44 @@ class AccessControlTest extends TestCase
         $this->actingAs($this->group1)->putJson('/api/activities/'.$this->activity->id, $this->activityData())->assertForbidden();
     }
 
-    public function test_private_reasons_not_exposed_to_other_jamaah(): void
+    public function test_reasons_visible_to_jamaah_with_access_to_activity(): void
     {
         $peer = $this->user('jamaah', $this->g1->id);
         Attendance::create(['activity_id' => $this->activity->id, 'user_id' => $peer->id, 'recorded_by' => $peer->id, 'status' => 'izin', 'reason' => 'Private reason']);
-        $this->actingAs($this->jamaah)->getJson('/api/activities/'.$this->activity->id.'/attendance')->assertOk()->assertJsonMissing(['reason' => 'Private reason']);
+        $this->actingAs($this->jamaah)->getJson('/api/activities/'.$this->activity->id.'/attendance')->assertOk()->assertJsonFragment(['reason' => 'Private reason']);
+        $this->actingAs($this->other)->getJson('/api/activities/'.$this->activity->id.'/attendance')->assertForbidden();
+    }
+
+    public function test_reminder_is_sent_once_only_at_two_hours_and_to_subscribed_visible_accounts(): void
+    {
+        $this->freezeTime();
+        foreach ([$this->jamaah, $this->other] as $user) {
+            PushSubscription::create(['user_id' => $user->id, 'endpoint' => 'https://example.test/'.$user->id, 'endpoint_hash' => hash('sha256', (string) $user->id), 'public_key' => 'test', 'auth_token' => 'test']);
+        }
+        $this->activity->update(['starts_at' => now()->addHours(3)]);
+        (new NotifyActivity($this->activity->id))->handle();
+        Queue::assertNotPushed(SendPush::class);
+        $this->activity->update(['starts_at' => now()->addHours(2)]);
+        $this->artisan('jims:remind')->assertSuccessful();
+        $this->artisan('jims:remind')->assertSuccessful();
+        Queue::assertPushed(SendPush::class, 1);
+        Queue::assertPushed(SendPush::class, fn ($job) => $job->userId === $this->jamaah->id);
+        $this->assertDatabaseCount('notices', 0);
+        $this->activity->update(['starts_at' => now()->addHours(4)]);
+        $this->travel(2)->hours();
+        $this->artisan('jims:remind')->assertSuccessful();
+        Queue::assertPushed(SendPush::class, 2);
+    }
+
+    public function test_reminders_skip_deleted_past_and_missed_window_activities(): void
+    {
+        $this->freezeTime();
+        $this->activity->update(['starts_at' => now()->addMinutes(118)]);
+        (new NotifyActivity($this->activity->id))->handle();
+        $this->assertNull($this->activity->fresh()->reminder_sent_for);
+        $this->activity->delete();
+        (new NotifyActivity($this->activity->id))->handle();
+        Queue::assertNotPushed(SendPush::class);
     }
 
     public function test_disabled_account_cannot_use_existing_session(): void

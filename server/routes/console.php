@@ -1,7 +1,9 @@
 <?php
 
+use App\Jobs\NotifyActivity;
 use App\Models\Activity;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schedule;
 use Minishlink\WebPush\VAPID;
 
 Artisan::command('jims:vapid', function () {
@@ -23,3 +25,11 @@ Artisan::command('jims:demo-today', function () {
     }
     $this->info('Tanggal kegiatan contoh disesuaikan ke hari ini; kegiatan lain tidak diubah.');
 });
+
+Artisan::command('jims:remind', function () {
+    Activity::where('starts_at', '>', now()->addHours(2)->subMinute())
+        ->where('starts_at', '<=', now()->addHours(2))
+        ->where(fn ($q) => $q->whereNull('reminder_sent_for')->orWhereColumn('reminder_sent_for', '!=', 'starts_at'))
+        ->eachById(fn ($activity) => (new NotifyActivity($activity->id))->handle());
+});
+Schedule::command('jims:remind')->everyMinute()->withoutOverlapping();

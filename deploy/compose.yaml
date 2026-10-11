@@ -42,6 +42,9 @@ services:
     <<: *app
     networks: [backend, outbound]
     command: php artisan queue:work --sleep=1 --tries=3 --timeout=60
+  scheduler:
+    <<: *app
+    command: php artisan schedule:work
   reverb:
     <<: *app
     command: php artisan reverb:start --host=0.0.0.0 --port=8081

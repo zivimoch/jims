@@ -245,7 +245,6 @@ function nav() {
         ["donations", "users", "Shodakoh"],
         ["history", "history", "Riwayat Absen"],
         ["classes", "book", "Kelas"],
-        ["notifications", "moon", "Notifikasi"],
     ];
     if (state.user.role !== "jamaah")
         items.push(
@@ -267,19 +266,13 @@ function nav() {
         .slice(0, 2)
         .map((s) => s[0])
         .join("");
-    $(".account-note").insertAdjacentHTML(
-        "beforebegin",
-        `<p class="scope-badge">${esc(roles[state.user.role])} · ${esc(state.user.group?.name || state.user.village?.name || "Semua wilayah")}</p><div class="account-tools"><button id="install-app">Pasang aplikasi</button><button id="logout">Keluar</button></div>`,
-    );
-    $("#install-app").onclick = run(async () => {
-        if (installPrompt) {
-            await installPrompt.prompt();
-            installPrompt = null;
-        } else
-            toast(
-                "Buka menu browser → Pasang aplikasi / Tambahkan ke layar utama. Pada iPhone: Bagikan → Tambah ke Layar Utama.",
-            );
-    });
+    $("#account-menu")?.remove();
+    $("#profile").insertAdjacentHTML("beforebegin", '<div id="account-menu" class="account-popover" hidden><button id="edit-profile">Profil saya</button><button id="open-settings">Settings</button><button id="logout">Keluar</button></div>');
+    $("#profile").setAttribute("aria-expanded", "false");
+    $("#profile").setAttribute("aria-controls", "account-menu");
+    $("#edit-profile").onclick = () => { closeAccountMenu(); editProfile(); };
+    $("#open-settings").onclick = run(async () => { closeAccountMenu(); await showPage("settings"); });
+    updateInstallButton();
     $("#logout").onclick = run(async () => {
         let endpoint;
         try {
@@ -445,11 +438,7 @@ function renderOwn() {
         "--slide-x",
         `${own ? (own.status === "offline" ? -1 : 1) * slideLimit() : 0}px`,
     );
-    $("#attendance-feedback").textContent = own
-        ? own.status === "offline"
-            ? "Anda hadir offline"
-            : "Anda Izin / Hadir Online"
-        : "";
+    $("#attendance-feedback").textContent = "";
     $("#fingerprint").setAttribute(
         "aria-label",
         own ? "Absensi sudah tercatat" : "Tap untuk absen hadir offline",
@@ -466,29 +455,17 @@ function renderOwn() {
     });
     $("#cancel-attendance")?.remove();
     $("#zoom-access")?.remove();
-    if (own)
-        $("#attendance-feedback").insertAdjacentHTML(
-            "afterend",
-            '<button class="text-button" id="cancel-attendance">Batalkan absensi saya</button>',
-        );
     if (own && own.status !== "offline" && selected()?.zoom_url)
         $("#attendance-feedback").insertAdjacentHTML(
             "afterend",
             `<div id="zoom-access" class="zoom-access"><a class="zoom-button" href="${esc(selected().zoom_url)}" target="_blank" rel="noopener noreferrer">${icon("screen")}Gabung Zoom</a></div>`,
         );
-    if ($("#cancel-attendance"))
-        $("#cancel-attendance").onclick = () =>
-            confirmAction(
-                "Batalkan absensi?",
-                "Absensi Anda untuk kegiatan ini akan dihapus.",
-                async () => {
-                    await api(
-                        `/activities/${state.selected}/attendance`,
-                        "DELETE",
-                    );
-                    await loadAttendance();
-                },
-            );
+ }
+function cancelOwnAttendance() {
+    confirmAction("Batalkan absensi?", "Absensi Anda untuk kegiatan ini akan dihapus.", async () => {
+        await api(`/activities/${state.selected}/attendance`, "DELETE");
+        await loadAttendance();
+    });
 }
 function confirmAction(title, body, action) {
     dialog(title, `<p>${esc(body)}</p>`, action, "Ya, lanjutkan");
@@ -514,7 +491,7 @@ function attendanceReasonFields() {
 function choose(direction) {
     if (!selected()) return;
     if (state.own) {
-        $("#cancel-attendance")?.click();
+        cancelOwnAttendance();
         return;
     }
     if (direction === "offline") run(() => attend("offline"))();
@@ -654,7 +631,7 @@ const pageTitles = {
     donations: "Shodakoh",
     classes: "Kelas",
     users: "Kelola Akun",
-    notifications: "Notifikasi",
+    settings: "Settings",
     audit: "Log Aktivitas",
     masters: "Master & Identitas",
 };
@@ -679,7 +656,7 @@ async function showPage(page) {
     if (page === "classes") await renderClasses();
     if (page === "donations") await renderDonations();
     if (page === "users") await renderUsers();
-    if (page === "notifications") await renderNotifications();
+    if (page === "settings") await renderSettings();
     if (page === "audit") await renderAudit();
     if (page === "masters") await renderMasters();
     enhanceChoices($("#" + page + "-page"));
@@ -1098,36 +1075,7 @@ async function renderHistory(page = 1) {
     pager($("#history-pager"), data, renderHistory);
 }
 async function renderClasses() {
-    const data = await api("/history");
-    const attended = data.data.filter((a) => a.status !== "izin");
-    $("#classes-page").innerHTML =
-        `${state.user.role !== "jamaah" ? '<button id="manage-classes" class="primary-button">Kelola kelas</button>' : ""}<h2>Ketercapaian materi</h2><p class="muted">Materi dari kegiatan yang Anda hadiri secara offline atau online.</p>${select("Kelas", "progress-class", [["all", "Semua kelas"], ...classes.map((c) => [c, c])], "all")}<div id="progress-list"></div>`;
-    const render = () => {
-        const selectedClass = $("#classes-page select").value;
-        const entries = attended.filter(
-            (a) =>
-                selectedClass === "all" ||
-                a.activity.required_classes?.some(
-                    (c) => c.name === selectedClass,
-                ) ||
-                a.activity.class_name === selectedClass,
-        );
-        $("#progress-list").innerHTML =
-            `<p class="metric">${entries.length} pertemuan${data.last_page > 1 ? " (100 catatan terbaru)" : ""}</p>` +
-            entries
-                .map(
-                    (a) =>
-                        `<article class="progress-row"><span class="badge class-badge">${esc(requiredText(a.activity))}</span><h3>${esc(a.activity.title)}</h3><p>${esc(materialText(a.activity))}</p><small>${esc(fmt(a.activity.starts_at))}</small></article>`,
-                )
-                .join("");
-    };
-    if ($("#manage-classes"))
-        $("#manage-classes").onclick = () => {
-            masterKind = "class";
-            showPage("masters");
-        };
-    $("#classes-page select").onchange = render;
-    render();
+    $("#classes-page").innerHTML = "";
 }
 async function renderDonations(page = 1) {
     const [payments, records] = await Promise.all([
@@ -1335,7 +1283,7 @@ function editUser(u = {}) {
     }
     bindScope();
 }
-$("#profile").onclick = () =>
+const editProfile = () =>
     dialog(
         "Profil saya",
         input("Nama lengkap", "name", state.user.name) +
@@ -1361,33 +1309,46 @@ $("#profile").onclick = () =>
             toast("Profil disimpan.");
         },
     );
-async function renderNotifications(page = 1) {
-    const records = await api("/notices?page=" + page);
-    $("#notifications-page").innerHTML =
-        `<div class="feature-toolbar"><h2>Notifikasi</h2><div class="action-row"><button class="primary-button" id="enable-push">Aktifkan notifikasi</button><button class="secondary-button" id="disable-push">Nonaktifkan</button><button class="secondary-button" id="test-push">Kirim uji</button></div></div><p class="muted">Izinkan notifikasi kegiatan di perangkat ini. Pada iPhone, pasang aplikasi ke layar utama terlebih dahulu.</p>${records.data.map((n) => `<article class="notice-row"><div><h3>${esc(n.title)}</h3><p>${esc(n.body)}</p><small>${esc(fmt(n.created_at))}</small></div>${n.read_at ? "" : `<button class="text-button" data-read="${n.id}">Tandai dibaca</button>`}</article>`).join("") || '<p class="empty-state">Belum ada notifikasi.</p>'}<div id="notice-pager" class="pager"></div>`;
-    $("#enable-push").onclick = run(enablePush);
+function closeAccountMenu() {
+    if ($("#account-menu")) $("#account-menu").hidden = true;
+    $("#profile").setAttribute("aria-expanded", "false");
+}
+$("#profile").onclick = () => {
+    const box = $("#account-menu");
+    box.hidden = !box.hidden;
+    $("#profile").setAttribute("aria-expanded", String(!box.hidden));
+};
+document.addEventListener("click", (e) => { if (!e.target.closest(".account")) closeAccountMenu(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeAccountMenu(); });
+async function renderSettings() {
+    $("#settings-page").innerHTML = '<h2>Notifikasi pengajian</h2><p class="muted">Pengingat dikirim 2 jam sebelum kegiatan dimulai. Aktifkan izin notifikasi di setiap perangkat. Pada iPhone, pasang JiMS ke layar utama terlebih dahulu.</p><p id="push-status" role="status"></p><div class="action-row"><button class="primary-button" id="enable-push">Aktifkan notifikasi</button><button class="secondary-button" id="disable-push">Nonaktifkan</button></div>';
+    const update = async () => {
+        const reg = await navigator.serviceWorker?.getRegistration();
+        const sub = await reg?.pushManager?.getSubscription();
+        $("#push-status").textContent = sub && window.Notification?.permission === "granted" ? "Notifikasi aktif di perangkat ini." : "Notifikasi belum aktif di perangkat ini.";
+    };
+    $("#enable-push").onclick = run(async () => { await enablePush(); await update(); });
     $("#disable-push").onclick = run(async () => {
         const reg = await navigator.serviceWorker?.getRegistration();
         const sub = await reg?.pushManager.getSubscription();
-        if (sub) {
-            await api("/push", "DELETE", { endpoint: sub.endpoint });
-            await sub.unsubscribe();
-        }
-        toast("Notifikasi perangkat dinonaktifkan.");
+        if (sub) { await api("/push", "DELETE", {endpoint: sub.endpoint}); await sub.unsubscribe(); }
+        await update();
     });
-    $("#test-push").onclick = run(async () => {
-        await api("/push/test", "POST");
-        toast("Notifikasi uji masuk antrean.");
-    });
-    $$("[data-read]").forEach(
-        (b) =>
-            (b.onclick = run(async () => {
-                await api("/notices/" + b.dataset.read, "PATCH");
-                await renderNotifications(page);
-            })),
-    );
-    pager($("#notice-pager"), records, renderNotifications);
+    await update();
 }
+function updateInstallButton() {
+    $("#download-app").hidden = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true || localStorage.getItem("jims-installed") === "yes";
+}
+$("#download-app").onclick = run(async () => {
+    if (installPrompt) {
+        await installPrompt.prompt();
+        const choice = await installPrompt.userChoice;
+        installPrompt = null;
+        if (choice.outcome === "accepted") { localStorage.setItem("jims-installed", "yes"); updateInstallButton(); }
+    } else toast("Buka menu browser → Pasang aplikasi / Tambahkan ke layar utama. Pada iPhone: Bagikan → Tambah ke Layar Utama.");
+});
+window.addEventListener("appinstalled", () => { localStorage.setItem("jims-installed", "yes"); updateInstallButton(); });
+window.matchMedia("(display-mode: standalone)").addEventListener("change", updateInstallButton);
 async function enablePush() {
     if (
         !("Notification" in window) ||
@@ -1452,7 +1413,6 @@ function connectRealtime() {
         refreshTimer = setTimeout(
             run(async () => {
                 await reloadActivities();
-                if (state.page === "notifications") await renderNotifications();
                 if (state.page === "donations") await renderDonations();
                 if (state.page === "users") await renderUsers();
                 if (state.page === "history") await renderHistory();
@@ -1481,6 +1441,8 @@ function connectRealtime() {
 window.addEventListener("beforeinstallprompt", (e) => {
     e.preventDefault();
     installPrompt = e;
+    localStorage.removeItem("jims-installed");
+    updateInstallButton();
 });
 window.addEventListener("offline", () => {
     $("#connection-status").textContent = "Offline · belum bisa menyimpan";

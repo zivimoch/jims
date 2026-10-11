@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Events\DataChanged;
-use App\Jobs\NotifyActivity;
 use App\Jobs\SendPush;
 use App\Models\Activity;
 use App\Models\Attendance;
@@ -145,7 +144,6 @@ class JimsController extends Controller
                 }
             }
             $this->audit($r, 'activity.saved', $record);
-            NotifyActivity::dispatch($record->id)->afterCommit();
 
             return $record;
         });
@@ -172,13 +170,6 @@ class JimsController extends Controller
         abort_unless($r->user()->canSee($activity), 403);
         // Jamaah can see names/status, but never another person's private reason.
         $rows = $activity->attendances()->with('user:id,name,group_id')->orderByDesc('updated_at')->paginate(100);
-        $rows->getCollection()->transform(function ($row) use ($r, $activity) {
-            if ($row->user_id !== $r->user()->id && ! $r->user()->manages($activity)) {
-                $row->makeHidden('reason');
-            }
-
-            return $row;
-        });
 
         return ['records' => $rows, 'own' => $activity->attendances()->where('user_id', $r->user()->id)->first()];
     }
