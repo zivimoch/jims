@@ -1077,64 +1077,10 @@ async function renderHistory(page = 1) {
 async function renderClasses() {
     $("#classes-page").innerHTML = "";
 }
-async function renderDonations(page = 1) {
-    const [payments, records] = await Promise.all([
-        api("/payments"),
-        api("/contributions?page=" + page),
-    ]);
-    $("#donations-page").innerHTML =
-        `<div class="feature-toolbar"><h2>Rekening shodakoh</h2>${state.user.role !== "jamaah" ? '<button class="secondary-button" id="payment-add">＋ Rekening</button>' : ""}</div><div class="donation-grid">${payments.map((p) => `<article class="panel donation-card"><h2>${esc(p.group?.name || "Desa")}</h2>${p.is_dummy ? '<span class="demo-payment">DATA DUMMY · BUKAN UNTUK TRANSFER</span>' : ""}<dl><dt>Bank</dt><dd>${esc(p.bank)}</dd><dt>Nomor rekening</dt><dd>${esc(p.number)}</dd><dt>Atas nama</dt><dd>${esc(p.holder)}</dd></dl>${p.is_dummy ? `<div class="qris-placeholder"><div class="qris-demo-art">${icon("qr-demo")}</div><strong>QRIS ${esc(p.group?.name || "Desa")}</strong><span>Contoh tampilan — tidak dapat dipindai</span></div>` : ""}${manages(p) ? `<button class="text-button" data-payment="${p.id}">Edit rekening</button><button class="text-button danger" data-payment-delete="${p.id}">Hapus</button>` : ""}</article>`).join("")}</div><section class="panel"><div class="feature-toolbar"><h2>Catatan shodakoh</h2>${state.user.village_id ? '<button class="primary-button" id="contribution-add">＋ Catat shodakoh</button>' : ""}</div><p class="muted">Catatan pribadi; bukan konfirmasi atau verifikasi transfer.</p><p class="metric">Total halaman ini: ${money(records.data.reduce((s, r) => s + Number(r.amount), 0))}</p>${records.data.map((r) => `<article class="account-row"><div><h3>${esc(r.category)} · ${money(r.amount)}</h3><p>${esc(r.user.name)} · ${esc(r.class_name)} · ${esc(r.date)}</p><p>${esc(r.note)}</p></div><div class="action-row"><button class="text-button" data-contribution="${r.id}">Edit</button><button class="text-button danger" data-contribution-delete="${r.id}">Hapus</button></div></article>`).join("") || '<p class="empty-state">Belum ada catatan shodakoh.</p>'}<div class="pager" id="contribution-pager"></div></section>`;
-    if ($("#payment-add")) $("#payment-add").onclick = () => editPayment();
-    $$("[data-payment]").forEach(
-        (b) =>
-            (b.onclick = () =>
-                editPayment(
-                    payments.find((p) => p.id === Number(b.dataset.payment)),
-                )),
-    );
-    $$("[data-payment-delete]").forEach(
-        (b) =>
-            (b.onclick = () =>
-                confirmAction(
-                    "Hapus rekening?",
-                    "Rekening ini tidak lagi tampil di Shodakoh.",
-                    async () => {
-                        await api(
-                            "/payments/" + b.dataset.paymentDelete,
-                            "DELETE",
-                        );
-                        await renderDonations();
-                    },
-                )),
-    );
-    if ($("#contribution-add"))
-        $("#contribution-add").onclick = () => editContribution();
-    $$("[data-contribution]").forEach(
-        (b) =>
-            (b.onclick = () =>
-                editContribution(
-                    records.data.find(
-                        (r) => r.id === Number(b.dataset.contribution),
-                    ),
-                )),
-    );
-    $$("[data-contribution-delete]").forEach(
-        (b) =>
-            (b.onclick = () =>
-                confirmAction(
-                    "Hapus catatan?",
-                    "Catatan shodakoh ini akan dihapus.",
-                    async () => {
-                        await api(
-                            "/contributions/" + b.dataset.contributionDelete,
-                            "DELETE",
-                        );
-                        await renderDonations(page);
-                    },
-                )),
-    );
-    pager($("#contribution-pager"), records, renderDonations);
+async function renderDonations() {
+    $("#donations-page").innerHTML = "";
 }
+
 function editPayment(p = {}) {
     dialog(
         p.id ? "Edit rekening" : "Tambah rekening",
