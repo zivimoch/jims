@@ -171,3 +171,5 @@ Referensi implementasi: [Laravel Reverb](https://laravel.com/docs/13.x/reverb), 
 Konfigurasi Compose terpisah dan panduan Caddy ada di [deploy/README.md](deploy/README.md). Target JiMS adalah `jims.zivi.zip`; DNS A bernama `jims` mengarah ke VPS. HTTPS, redirect HTTP, login, cookie remember-me Secure, halaman AMI, koneksi realtime, manifest PWA, dan kesehatan container telah diverifikasi pada deployment awal. Pengiriman notifikasi OS dan pemulihan backup penuh belum diuji. Data akun production tidak disimpan dalam repository.
 
 Menu nama/avatar memuat Profil saya, Settings, dan Keluar. Alasan absensi terlihat oleh semua pengguna yang berhak melihat kegiatan tersebut. Teks status hanya muncul pada kontrol absensi; pembatalan tetap melalui kontrol geser. Tombol Download disembunyikan pada mode aplikasi terpasang atau setelah browser mengonfirmasi pemasangan. Browser tidak selalu dapat mendeteksi pemasangan dari browser/perangkat lain.
+
+Ikon PWA memakai logo JiMS pada kanvas persegi putih dengan logo di tengah, tersedia dalam ukuran 192 dan 512 piksel. Ikon dan cache service worker diberi versi agar pembaruan dapat diambil browser.

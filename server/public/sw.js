@@ -1,8 +1,8 @@
-const CACHE = "jims-shell-v1";
+const CACHE = "jims-shell-v2";
 const ASSETS = [
     "/offline.html",
-    "/icons/icon-192.png",
-    "/icons/icon-512.png",
+    "/icons/jims-v2-192.png",
+    "/icons/jims-v2-512.png",
     "/assets/jims-logo.png",
 ];
 self.addEventListener("install", (event) =>
@@ -63,8 +63,8 @@ self.addEventListener("push", (event) => {
     event.waitUntil(
         self.registration.showNotification(d.title, {
             body: d.body,
-            icon: "/icons/icon-192.png",
-            badge: "/icons/icon-192.png",
+            icon: "/icons/jims-v2-192.png",
+            badge: "/icons/jims-v2-192.png",
             tag: "jims-update",
             data: { url: "/" },
         }),

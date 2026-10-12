@@ -10,7 +10,7 @@ Route::get('/', fn () => response()->view('app', ['brand' => BrandSetting::first
 Route::get('/manifest.webmanifest', function () {
     $brand = BrandSetting::first();
 
-    return response()->json(['id' => '/', 'name' => $brand?->name ?? 'JiMS', 'short_name' => $brand?->name ?? 'JiMS', 'description' => $brand?->subtitle ?? 'Agenda dan absensi jamaah', 'lang' => 'id', 'start_url' => '/', 'scope' => '/', 'display' => 'standalone', 'background_color' => '#f3f8f7', 'theme_color' => '#00aa80', 'icons' => [['src' => '/icons/icon-192.png', 'sizes' => '192x192', 'type' => 'image/png', 'purpose' => 'any maskable'], ['src' => '/icons/icon-512.png', 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'any maskable']]])->header('Content-Type', 'application/manifest+json')->header('Cache-Control', 'no-cache');
+    return response()->json(['id' => '/', 'name' => $brand?->name ?? 'JiMS', 'short_name' => $brand?->name ?? 'JiMS', 'description' => $brand?->subtitle ?? 'Agenda dan absensi jamaah', 'lang' => 'id', 'start_url' => '/', 'scope' => '/', 'display' => 'standalone', 'background_color' => '#f3f8f7', 'theme_color' => '#00aa80', 'icons' => [['src' => '/icons/jims-v2-192.png', 'sizes' => '192x192', 'type' => 'image/png', 'purpose' => 'any maskable'], ['src' => '/icons/jims-v2-512.png', 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'any maskable']]])->header('Content-Type', 'application/manifest+json')->header('Cache-Control', 'no-cache');
 });
 Route::post('/api/login', [J::class, 'login'])->middleware('throttle:5,1');
 Route::middleware(['auth', ActiveAccount::class, 'throttle:180,1'])->prefix('api')->group(function () {
